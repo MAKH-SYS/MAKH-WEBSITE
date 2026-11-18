@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giving the fuzzer its own CPU: the MakhOS fuzz cell — MakhOS</title>
+<meta name="description" content="MakhOS 2.0 is symmetric multiprocessing with a purpose: a fuzz cell gives one CPU to the kernel's own fuzzer, and a fault or a hang there is contained on that CPU — reported with its seed and the locks it holds — instead of taking the machine down.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="technology.html">Technology</a>
+      <a href="blog.html" class="active">Blog</a>
+      <a href="docs.html">Docs</a>
+      <a href="about.html">About</a>
+      <a href="licensing.html" class="cta">Licensing</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+<article class="article" style="padding:48px 0">
+  <p class="eyebrow"><a href="blog.html" style="color:var(--accent)">← Blog</a> · SMP &amp; MAKH Cells</p>
+  <h1>Giving the fuzzer its own CPU: the MakhOS fuzz cell</h1>
+  <p class="meta">MakhOS engineering · MakhOS 2.0 (SMP) · commercial edition</p>
+
+  <p>MakhOS 1.x ran on a single CPU. <strong>MakhOS 2.0 is symmetric multiprocessing</strong> — it boots every core the firmware reports and runs one scheduler across all of them, with real lock discipline underneath. That is table stakes. The interesting part is what the extra cores made possible: a way to run the kernel's own fuzzer on a CPU of its own, and to <strong>contain</strong> what it finds — a fault, a broken invariant, or a hang — on that one core, while the rest of the machine keeps working.</p>
+
+  <p>We call it a <strong>fuzz cell</strong>. This post is about why it is hard and how it is built.</p>
+
+  <h2>The starting point: a kernel that fuzzes itself</h2>
+  <p>MakhOS already fuzzes its kernel <em>from the inside</em>. <a href="blog-kfuzz.html">KFUZZ</a> runs a sandboxed kernel thread that calls the kernel's own functions — the heap, the page allocator, the filesystem, the network path — with random input, catches the faults that result with an assembly <span class="inline-code">setjmp</span>/<span class="inline-code">longjmp</span> sandbox, and turns each one into a reproducible finding tagged with its seed. On one CPU, that campaign shares time with everything else.</p>
+
+  <p>The question 2.0 asks: what if fuzzing had its <em>own</em> core? Then it could run flat-out without stealing time from real work — and, more importantly, a crash or a hang inside it could be kept off every other core. That is only worth doing if the containment is real. It took the whole SMP stack to get there.</p>
+
+  <h2>The foundation</h2>
+  <p>Before a cell can be carved off, the kernel has to be genuinely multi-core and genuinely safe about it. MakhOS 2.0 adds, brick by brick, each with a test written to fail first:</p>
+  <ul>
+    <li>A fair <strong>ticket spinlock</strong> with lock <em>levels</em> and a lockdep-lite checker that refuses an out-of-order or re-entrant acquire — plus an audit that tags every mutable global with why it is safe.</li>
+    <li><strong>APIC-era interrupts</strong>: ACPI (MADT) discovery, the Local and I/O APICs, and a per-CPU timer.</li>
+    <li><strong>AP boot</strong>: a 16→32→64-bit trampoline and INIT-SIPI-SIPI to bring every application processor online, each with its own GDT/TSS/IST/GS.</li>
+    <li>Cross-CPU <strong>IPIs and a TLB shootdown</strong> that keeps every core's view of the page tables coherent.</li>
+    <li>One <strong>SMP scheduler</strong>: a single run queue, a barrier-correct wake-up handshake (validated against a Dekker litmus test), CPU affinity, and per-thread FPU and segment state so a thread survives migration.</li>
+    <li>A deterministic <strong>concurrency simulator</strong> that runs the <em>real</em> lock and scheduler code, byte-identical, under a seeded and replayable scheduler, with a KCSAN-lite race detector on top.</li>
+  </ul>
+
+  <h2>Carving off a cell</h2>
+  <p>With that in place, a <strong>cell</strong> is one CPU taken out of the scheduler. The first kind is a <em>silent cell</em>: its timer tick is masked, it refuses IPIs, and it runs an isolation workload with a deferred, epoch-gated TLB flush — a low-noise core, the OS equivalent of <span class="inline-code">isolcpus</span>/<span class="inline-code">nohz_full</span>.</p>
+
+  <p>The <em>fuzz cell</em> is the second kind, and it is different in one crucial way: it still runs the <strong>shared kernel</strong>. Its targets take the kernel's real locks, allocate from its real heap, and keep the tick and the IPIs. What it isolates is not memory — it is <strong>control</strong>: where a fault lands, who gets reported, who is stuck.</p>
+
+<figure style="margin:30px 0;background:#141009;border:1px solid #2c2419;border-radius:14px;padding:22px 18px 10px">
+<svg viewBox="0 0 720 250" role="img" aria-label="Three root CPUs run the scheduler; CPU 3 is a fuzz cell running a KFUZZ campaign that reports findings to the root over a channel, while a watchdog on a root CPU watches it for a hang." style="width:100%;height:auto;font-family:Inter,system-ui,sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#f59e0b"/></marker>
+    <marker id="g" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#8a7d6b"/></marker>
+  </defs>
+  <!-- findings channel -->
+  <path d="M628,96 C628,46 91,46 91,92" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#a)"/>
+  <text x="360" y="38" text-anchor="middle" fill="#f59e0b" font-size="13" font-weight="600">findings channel · (seed, vector, CPU)</text>
+  <!-- root CPUs -->
+  <g font-size="14">
+    <rect x="16"  y="92" width="150" height="60" rx="9" fill="#17130f" stroke="#3a3020"/>
+    <rect x="195" y="92" width="150" height="60" rx="9" fill="#17130f" stroke="#3a3020"/>
+    <rect x="374" y="92" width="150" height="60" rx="9" fill="#17130f" stroke="#3a3020"/>
+    <circle cx="36" cy="110" r="4" fill="#7bd88f"/><circle cx="215" cy="110" r="4" fill="#7bd88f"/><circle cx="394" cy="110" r="4" fill="#7bd88f"/>
+    <text x="91"  y="115" text-anchor="middle" fill="#f6eee3" font-weight="600">CPU 0</text>
+    <text x="270" y="115" text-anchor="middle" fill="#f6eee3" font-weight="600">CPU 1</text>
+    <text x="449" y="115" text-anchor="middle" fill="#f6eee3" font-weight="600">CPU 2</text>
+    <text x="91"  y="137" text-anchor="middle" fill="#8a7d6b" font-size="12">root · scheduler</text>
+    <text x="270" y="137" text-anchor="middle" fill="#8a7d6b" font-size="12">root · scheduler</text>
+    <text x="449" y="137" text-anchor="middle" fill="#8a7d6b" font-size="12">root · scheduler</text>
+  </g>
+  <!-- fuzz cell -->
+  <rect x="553" y="92" width="151" height="60" rx="9" fill="#1e1708" stroke="#f59e0b" stroke-width="1.6"/>
+  <text x="628" y="115" text-anchor="middle" fill="#f6eee3" font-size="14" font-weight="600">CPU 3</text>
+  <text x="628" y="137" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="700" letter-spacing="0.5">FUZZ CELL</text>
+  <text x="628" y="176" text-anchor="middle" fill="#b6a894" font-size="12">KFUZZ campaign, flat out</text>
+  <!-- watchdog -->
+  <path d="M120,152 C300,224 470,224 580,152" fill="none" stroke="#8a7d6b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#g)"/>
+  <text x="350" y="234" text-anchor="middle" fill="#8a7d6b" font-size="12">a watchdog on a root CPU watches the cell for a hang</text>
+</svg>
+<figcaption style="color:#8a7d6b;font-size:0.84rem;margin-top:12px;text-align:center">One CPU is taken out of the scheduler for a KFUZZ campaign. Its findings reach the root over a lock-free channel; a watchdog on a root CPU — not the cell's own, which may be wedged — watches it.</figcaption>
+</figure>
+
+  <h2>A fault, caught on the cell's CPU</h2>
+  <p>The sandbox that catches a CPU fault had to become <strong>per-thread</strong>. On one CPU, "a target is running" is a single flag. With several cores, a fault on CPU&nbsp;A while CPU&nbsp;B is fuzzing must not be mistaken for B's — or the fault handler would <span class="inline-code">longjmp</span> onto the wrong stack. So the sandbox now belongs to the exact thread running the target; a vector-0–31 fault is the fuzzer's only if it is taken by that thread, on that core. Everything else stays fatal, as it should.</p>
+
+  <p>Each caught fault is counted per CPU and sent to the root as a <strong>finding</strong> — kind, vector, seed, CPU — over a lock-free channel. In the registered evaluation, the deliberate-fault target run 1000 times in the cell, at 2, 4 and 8 CPUs, lands <strong>1000 faults on the cell's core and zero on any root core</strong>, every time, and the campaign runs to its end. A canary confirms the converse: a fault raised on a root thread <em>while the cell's sandbox is active</em> is not swallowed by that sandbox — 20 times out of 20.</p>
+
+  <h2>The hard part: containing a hang</h2>
+  <p>A fault is a clean event — the CPU traps, you catch it. A <strong>hang</strong> is not. A target stuck in an infinite loop, or deadlocked on a lock, never traps; it just stops making progress. Before 2.0, KFUZZ handled that with a watchdog that <span class="inline-code">panic</span>s — it brought the whole machine down. For a fuzz cell, that is exactly the wrong answer.</p>
+
+  <p>So the fuzz cell's watchdog runs on a <strong>root CPU</strong> — because the cell's own core may be the one that is wedged. When a target sits in the sandbox past the budget without the campaign advancing, the watchdog does three things instead of panicking: it <strong>reports</strong> the hang on the findings channel with its seed; it names, loudly, the <strong>locks the cell's CPU is holding</strong>; and it <strong>quarantines</strong> the cell — the stuck core is not handed back, and no lock is released by force. The machine stays alive.</p>
+
+  <p>The test that proves it was, as always, written to fail first. A new test target that spins forever is run in a fuzz cell:</p>
+
+<pre class="code">// before 2.0's containment:
+*** KERNEL PANIC *** KFUZZ watchdog: target 'spin' hung on seed 0x7a4d...
+
+// after:
+[KFUZZ] HANG target=spin seed=0x7a4d... cpu=1 held=[]   (reported)
+[CELL]  fuzz cell on CPU 1 quarantined: target hung; CPU not returned</pre>
+
+  <p>The first line is the old behaviour, reproduced on purpose by forcing the pre-2.0 path: the machine dies. The second is 2.0: the hang is a finding, the core is quarantined, and the test returns — which is the whole point.</p>
+
+<figure style="margin:30px 0;background:#141009;border:1px solid #2c2419;border-radius:14px;padding:22px 18px 10px">
+<svg viewBox="0 0 720 286" role="img" aria-label="A fault on the cell's CPU is caught by that thread's sandbox and reported as a finding, so root CPUs take zero faults. A hang is noticed by a root-CPU watchdog, reported with its seed and held locks, and the cell is quarantined while the machine stays alive." style="width:100%;height:auto;font-family:Inter,system-ui,sans-serif">
+  <defs>
+    <marker id="d1" markerWidth="9" markerHeight="9" refX="4" refY="6" orient="auto"><path d="M0,0 L6,0 L3,6 Z" fill="#7bd88f"/></marker>
+    <marker id="d2" markerWidth="9" markerHeight="9" refX="4" refY="6" orient="auto"><path d="M0,0 L6,0 L3,6 Z" fill="#f59e0b"/></marker>
+  </defs>
+  <text x="180" y="28" text-anchor="middle" fill="#7bd88f" font-size="14" font-weight="700" letter-spacing="0.4">A FAULT — caught</text>
+  <text x="540" y="28" text-anchor="middle" fill="#f59e0b" font-size="14" font-weight="700" letter-spacing="0.4">A HANG — contained</text>
+  <g font-size="13" fill="#f6eee3">
+    <!-- fault column -->
+    <rect x="30"  y="44" width="300" height="42" rx="8" fill="#17130f" stroke="#3a3020"/><text x="180" y="70" text-anchor="middle">bad input runs on the cell's CPU</text>
+    <line x1="180" y1="86" x2="180" y2="102" stroke="#7bd88f" stroke-width="1.6" marker-end="url(#d1)"/>
+    <rect x="30"  y="104" width="300" height="42" rx="8" fill="#17130f" stroke="#3a3020"/><text x="180" y="130" text-anchor="middle">traps — the thread's own sandbox catches it</text>
+    <line x1="180" y1="146" x2="180" y2="162" stroke="#7bd88f" stroke-width="1.6" marker-end="url(#d1)"/>
+    <rect x="30"  y="164" width="300" height="42" rx="8" fill="#17130f" stroke="#3a3020"/><text x="180" y="190" text-anchor="middle">finding: seed + vector → root</text>
+    <line x1="180" y1="206" x2="180" y2="222" stroke="#7bd88f" stroke-width="1.6" marker-end="url(#d1)"/>
+    <rect x="30"  y="224" width="300" height="44" rx="8" fill="#16210f" stroke="#7bd88f"/><text x="180" y="251" text-anchor="middle" fill="#7bd88f" font-weight="600">root CPUs take 0 faults ✓</text>
+    <!-- hang column -->
+    <rect x="390" y="44" width="300" height="42" rx="8" fill="#17130f" stroke="#3a3020"/><text x="540" y="70" text-anchor="middle">target wedged on the cell's CPU</text>
+    <line x1="540" y1="86" x2="540" y2="102" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#d2)"/>
+    <rect x="390" y="104" width="300" height="42" rx="8" fill="#17130f" stroke="#3a3020"/><text x="540" y="130" text-anchor="middle">a watchdog on a root CPU notices</text>
+    <line x1="540" y1="146" x2="540" y2="162" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#d2)"/>
+    <rect x="390" y="164" width="300" height="42" rx="8" fill="#17130f" stroke="#3a3020"/><text x="540" y="190" text-anchor="middle">reports the seed + the locks it holds</text>
+    <line x1="540" y1="206" x2="540" y2="222" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#d2)"/>
+    <rect x="390" y="224" width="300" height="44" rx="8" fill="#1e1708" stroke="#f59e0b"/><text x="540" y="251" text-anchor="middle" fill="#f59e0b" font-weight="600">cell quarantined — machine alive ✓</text>
+  </g>
+</svg>
+<figcaption style="color:#8a7d6b;font-size:0.84rem;margin-top:12px;text-align:center">Two kinds of trouble, both contained on the cell's CPU: a fault the root never sees, and a hang that becomes a report instead of a panic.</figcaption>
+</figure>
+
+  <h2>Honest about the limits</h2>
+  <p>A fuzz cell contains <em>control</em>, not <em>memory</em>. It runs the shared kernel, so a target that corrupts the shared heap corrupts the root's heap too, and a hang that holds a <em>global</em> lock will make the root paths that need that lock wait — the hang report says exactly which lock. Forcibly unwinding a stuck target's locks, and restoring kernel state after a corrupting run with snapshots, are deliberately out of scope for this version. These are written down in the design log, not papered over.</p>
+
+  <p>That discipline is the point as much as the feature is. Every brick ships with a test that failed first, a positive and a negative canary for each oracle, and numbers that are <strong>measured, not judged</strong>: the full suite passes at 1, 2, 4 and 8 CPUs; fault containment and hang containment are evaluated against criteria registered <em>before</em> the work; the fuzz cell's throughput is reported as a figure (about 17% under the same campaign on a root core — the cost of the channel, the watchdog, and the isolation), not a verdict.</p>
+
+  <p>Every finding replays deterministically from its seed on a root CPU, and the whole fuzz cell is driven from the shell — <span class="inline-code">fuzzcell start</span>, <span class="inline-code">fuzzcell poll</span>, <span class="inline-code">fuzzcell stop</span> — so a campaign can be launched and its findings read from an ordinary user program, not just from inside the kernel.</p>
+
+  <h2>The 2.0 gate, by the numbers</h2>
+  <p>These are correctness and containment figures, each measured against a criterion registered before the work. (Raw performance is a hardware question: under QEMU-TCG the host's cores are multiplexed, so absolute speed is not representative — bare-metal benchmarks come with the hardware.)</p>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:24px 0 8px">
+    <div style="background:#141009;border:1px solid #2c2419;border-radius:12px;padding:16px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:1.7rem;font-weight:700;color:#f59e0b">379/379</div>
+      <div style="color:#f6eee3;font-size:0.9rem;margin-top:4px">full suite passes</div>
+      <div style="color:#8a7d6b;font-size:0.8rem">at 1, 2, 4 and 8 CPUs</div>
+    </div>
+    <div style="background:#141009;border:1px solid #2c2419;border-radius:12px;padding:16px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:1.7rem;font-weight:700;color:#f59e0b">1000<span style="color:#8a7d6b;font-size:1.1rem"> / </span>0</div>
+      <div style="color:#f6eee3;font-size:0.9rem;margin-top:4px">faults on the cell's CPU / on root</div>
+      <div style="color:#8a7d6b;font-size:0.8rem">deliberate-fault target, each run</div>
+    </div>
+    <div style="background:#141009;border:1px solid #2c2419;border-radius:12px;padding:16px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:1.7rem;font-weight:700;color:#7bd88f">20/20</div>
+      <div style="color:#f6eee3;font-size:0.9rem;margin-top:4px">canary holds</div>
+      <div style="color:#8a7d6b;font-size:0.8rem">a root fault is not the cell's</div>
+    </div>
+    <div style="background:#141009;border:1px solid #2c2419;border-radius:12px;padding:16px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:1.7rem;font-weight:700;color:#7bd88f">60/60</div>
+      <div style="color:#f6eee3;font-size:0.9rem;margin-top:4px">findings replay</div>
+      <div style="color:#8a7d6b;font-size:0.8rem">same verdict from the seed</div>
+    </div>
+    <div style="background:#141009;border:1px solid #2c2419;border-radius:12px;padding:16px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:1.7rem;font-weight:700;color:#7bd88f">0</div>
+      <div style="color:#f6eee3;font-size:0.9rem;margin-top:4px">stress failures</div>
+      <div style="color:#8a7d6b;font-size:0.8rem">SMP 4 &amp; 8, back-to-back boots</div>
+    </div>
+    <div style="background:#141009;border:1px solid #2c2419;border-radius:12px;padding:16px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:1.7rem;font-weight:700;color:#f59e0b">~17%</div>
+      <div style="color:#f6eee3;font-size:0.9rem;margin-top:4px">fuzz-cell overhead</div>
+      <div style="color:#8a7d6b;font-size:0.8rem">vs a root-CPU campaign (TCG)</div>
+    </div>
+  </div>
+
+  <h2>Where it goes</h2>
+  <p>The fuzz cell is the first thing built on the cell abstraction, and the cell abstraction is built to take a <em>type</em>: a silent cell, a fuzz cell — and, later, an application cell that gives a latency-sensitive workload a core with no scheduler jitter, or a hypervisor that runs a guest under second-level paging and snapshots it for fuzzing. Same mechanism, different payload.</p>
+
+  <p>MakhOS 2.0 — symmetric multiprocessing with a verification layer built in — is available under commercial license.</p>
+
+  <p style="margin-top:28px"><a class="btn btn-primary" href="licensing.html">See licensing →</a></p>
+
+</article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col" style="max-width:300px">
+        <div class="brand" style="margin-bottom:10px"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></div>
+        <p style="color:var(--faint);font-size:0.86rem;margin:0">A from-scratch x86-64 operating system kernel by MAKH-SYS. Open core under AGPL-3.0, with a commercial edition.</p>
+      </div>
+      <div class="footer-col"><h4>Project</h4><a href="technology.html">Technology</a><a href="blog.html">Blog</a><a href="docs.html">Documentation</a></div>
+      <div class="footer-col"><h4>Organization</h4><a href="about.html">About MAKH-SYS</a><a href="licensing.html">Licensing</a><a href="about.html#contact">Contact</a></div>
+      <div class="footer-col"><h4>Source</h4><a href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">GitHub ↗</a><a href="licensing.html">Commercial edition</a></div>
+    </div>
+    <div class="footer-bottom">
+      <span class="lic">AGPL-3.0 open core + commercial edition · © 2026 MAKH-SYS</span>
+      <span>Built brick by brick</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A core with no noise: the silent cell — MakhOS</title>
+<meta name="description" content="A MakhOS silent cell takes one CPU out of the scheduler — no tick, no IPIs, a deferred TLB flush — to run a latency-sensitive workload with no interference. The OS equivalent of isolcpus/nohz_full, built in and measured.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="technology.html">Technology</a>
+      <a href="blog.html" class="active">Blog</a>
+      <a href="docs.html">Docs</a>
+      <a href="about.html">About</a>
+      <a href="licensing.html" class="cta">Licensing</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+<article class="article" style="padding:48px 0">
+  <p class="eyebrow"><a href="blog.html" style="color:var(--accent)">← Blog</a> · SMP &amp; MAKH Cells</p>
+  <h1>A core with no noise: the silent cell</h1>
+  <p class="meta">MakhOS engineering · MakhOS 2.0 (SMP) · commercial edition</p>
+
+  <p>The <a href="blog-smp.html">fuzz cell</a> gives one CPU to the kernel's own fuzzer. It is built on a simpler, more general idea — the <strong>silent cell</strong>: one CPU taken out of the scheduler so a single workload can run on it with <strong>nothing else interfering</strong>. No other thread, no timer tick, no inter-processor interrupt. A core with no noise.</p>
+
+  <p>On a normal OS, even a CPU "dedicated" to one task is interrupted constantly — the scheduler tick fires, other cores send it IPIs, a TLB shootdown stalls it mid-instruction. For most software that jitter is invisible. For a latency-sensitive loop — a matching engine, a packet pipeline, a real-time controller — it is the difference between a predictable tail and a long one. Linux addresses this with <span class="inline-code">isolcpus</span> and <span class="inline-code">nohz_full</span> bolted on. MakhOS builds it in.</p>
+
+  <h2>What makes a CPU noisy — and how the cell removes it</h2>
+  <p>Three sources of interference, three answers:</p>
+
+<figure style="margin:30px 0;background:#141009;border:1px solid #2c2419;border-radius:14px;padding:22px 18px 10px">
+<svg viewBox="0 0 720 250" role="img" aria-label="A root CPU is hit by the timer tick, IPIs and TLB shootdowns; the silent cell has the tick masked, IPIs refused, and the shootdown deferred to an epoch gate, so its workload runs uninterrupted." style="width:100%;height:auto;font-family:Inter,system-ui,sans-serif">
+  <defs>
+    <marker id="n" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#b6a894"/></marker>
+  </defs>
+  <!-- root CPU, noisy -->
+  <rect x="40" y="90" width="230" height="110" rx="12" fill="#17130f" stroke="#3a3020"/>
+  <text x="155" y="120" text-anchor="middle" fill="#f6eee3" font-size="15" font-weight="600">a normal CPU</text>
+  <text x="155" y="146" text-anchor="middle" fill="#8a7d6b" font-size="12.5">interrupted constantly</text>
+  <text x="155" y="170" text-anchor="middle" fill="#b6a894" font-size="12.5">tick · IPIs · shootdowns</text>
+  <!-- noise arrows into root -->
+  <g>
+    <line x1="60"  y1="40" x2="110" y2="86" stroke="#b6a894" stroke-width="1.6" marker-end="url(#n)"/>
+    <line x1="155" y1="34" x2="155" y2="86" stroke="#b6a894" stroke-width="1.6" marker-end="url(#n)"/>
+    <line x1="250" y1="40" x2="200" y2="86" stroke="#b6a894" stroke-width="1.6" marker-end="url(#n)"/>
+    <text x="155" y="24" text-anchor="middle" fill="#b6a894" font-size="12">timer tick · IPIs · TLB shootdowns</text>
+  </g>
+  <!-- silent cell -->
+  <rect x="450" y="90" width="230" height="110" rx="12" fill="#1e1708" stroke="#f59e0b" stroke-width="1.6"/>
+  <text x="565" y="120" text-anchor="middle" fill="#f59e0b" font-size="15" font-weight="700" letter-spacing="0.4">SILENT CELL</text>
+  <text x="565" y="146" text-anchor="middle" fill="#f6eee3" font-size="12.5">one workload, flat out</text>
+  <text x="565" y="170" text-anchor="middle" fill="#7bd88f" font-size="12.5">no interruptions</text>
+  <!-- blocked noise -->
+  <g>
+    <line x1="470" y1="40" x2="515" y2="80" stroke="#8a7d6b" stroke-width="1.4" stroke-dasharray="4 3"/>
+    <line x1="565" y1="34" x2="565" y2="80" stroke="#8a7d6b" stroke-width="1.4" stroke-dasharray="4 3"/>
+    <line x1="660" y1="40" x2="615" y2="80" stroke="#8a7d6b" stroke-width="1.4" stroke-dasharray="4 3"/>
+    <text x="565" y="66" text-anchor="middle" fill="#e06a5a" font-size="16" font-weight="700">✕  ✕  ✕</text>
+    <text x="565" y="24" text-anchor="middle" fill="#8a7d6b" font-size="12">tick masked · IPIs refused · flush deferred</text>
+  </g>
+  <text x="360" y="155" text-anchor="middle" fill="#8a7d6b" font-size="22">→</text>
+</svg>
+<figcaption style="color:#8a7d6b;font-size:0.84rem;margin-top:12px;text-align:center">A normal core is interrupted by the tick, IPIs and shootdowns. The silent cell masks the tick, refuses IPIs, and defers the TLB flush — its workload runs uninterrupted.</figcaption>
+</figure>
+
+  <ul>
+    <li><strong>The timer tick</strong> — masked. The cell's local APIC timer is turned off while it is silent, so the scheduler never preempts it.</li>
+    <li><strong>IPIs</strong> — refused. Reschedule and remote-call interrupts aimed at the cell are declined; the root never steals its attention.</li>
+    <li><strong>TLB shootdowns</strong> — deferred. This is the subtle one.</li>
+  </ul>
+
+  <h2>The deferred flush</h2>
+  <p>When the kernel changes a page mapping, every CPU must drop the stale entry from its TLB — normally by an IPI that interrupts each core and makes it flush. A silent cell cannot take that IPI without losing its silence. So the cell does not flush on demand: the change is recorded, and the cell applies it at an <strong>epoch gate</strong> — a point where it is already synchronizing — rather than mid-workload. Correctness is preserved (the cell never uses a stale mapping for memory it touches) without a single interruption. Pages the kernel wanted to reclaim are simply <em>parked</em> until the cell passes the gate; the cell's counters show exactly how many.</p>
+
+  <h2>Driving it, and measuring it</h2>
+  <p>A silent cell is one command away:</p>
+<pre class="code">cell start              # take the last CPU out of the scheduler
+cell                    # its counters: ticks, locks, IPIs refused, pages parked
+cell ping e1 10000      # round-trip latency on a path, from the root
+cell stop               # give the CPU back</pre>
+
+  <p>The cell can also do real work and report its latency. Three paths are measured end to end: <strong>E1</strong>, a message that comes straight back on an in-kernel channel; <strong>E2</strong>, a frame sent out of a dedicated second NIC in loopback and back; and <strong>E3</strong>, a real ICMP echo to the gateway on the cell's own network. Each run reports the full distribution — min, p50, p90, p99, p99.9, max — not just an average, so the <em>tail</em> is visible.</p>
+
+  <p>One honest note on the numbers: today they are measured under QEMU-TCG, where the host's cores are multiplexed and timing is the emulator's, not real silicon. The percentiles prove the <em>mechanism</em> — the cell takes no tick, refuses its IPIs, parks its pages, and answers on every path — but absolute latency figures wait for bare-metal hardware. We report what we measured and label where we measured it; we do not dress an emulator up as a benchmark.</p>
+
+  <h2>Where it goes: the application cell</h2>
+  <p>The silent cell runs a fixed in-kernel workload today. The cell abstraction, though, takes a <em>type</em> — silent, fuzz — and the natural next type is an <strong>application cell</strong>: the same zero-noise core, handed a latency-sensitive user workload instead of a fixed one. A matching engine is the canonical case — busy-poll a dedicated NIC for market data, keep the order book in memory, match, and emit, all on a core the scheduler never touches and the shootdown never stalls. That is exactly the shape high-frequency systems build by hand with isolated cores and kernel-bypass networking; MakhOS already has the three ingredients — the isolated core, the dedicated NIC, and the lock-free channel back to the root. Wiring a pluggable payload onto them is the roadmap, not a claim made today.</p>
+
+  <p>The silent cell and the fuzz cell are two faces of one mechanism — a CPU partitioned out of the system for a single purpose, with the hard parts (interrupt silence, a correct deferred flush, a clean handshake back to the root) solved once. MakhOS 2.0 is available under commercial license.</p>
+
+  <p style="margin-top:28px"><a class="btn btn-primary" href="licensing.html">See licensing →</a></p>
+
+</article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col" style="max-width:300px">
+        <div class="brand" style="margin-bottom:10px"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></div>
+        <p style="color:var(--faint);font-size:0.86rem;margin:0">A from-scratch x86-64 operating system kernel by MAKH-SYS. Open core under AGPL-3.0, with a commercial edition.</p>
+      </div>
+      <div class="footer-col"><h4>Project</h4><a href="technology.html">Technology</a><a href="blog.html">Blog</a><a href="docs.html">Documentation</a></div>
+      <div class="footer-col"><h4>Organization</h4><a href="about.html">About MAKH-SYS</a><a href="licensing.html">Licensing</a><a href="about.html#contact">Contact</a></div>
+      <div class="footer-col"><h4>Source</h4><a href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">GitHub ↗</a><a href="licensing.html">Commercial edition</a></div>
+    </div>
+    <div class="footer-bottom">
+      <span class="lic">AGPL-3.0 open core + commercial edition · © 2026 MAKH-SYS</span>
+      <span>Built brick by brick</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
