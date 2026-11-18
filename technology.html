@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Technology — MakhOS</title>
+<meta name="description" content="How MakhOS works, in depth: the KFUZZ ring-0 self-fuzzer, the UFUZZ ring-3 syscall fuzzer, the x86-64 architecture, the RFC 793 TCP/IP stack, self-hosting with tcc + make, and the framebuffer shell.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="technology.html" class="active">Technology</a>
+      <a href="blog.html">Blog</a>
+      <a href="docs.html">Docs</a>
+      <a href="about.html">About</a>
+      <a href="licensing.html" class="cta">Licensing</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="section-tight" style="padding-top:44px">
+  <div class="wrap">
+    <p class="eyebrow">Technology</p>
+    <h1 style="font-size:clamp(1.8rem,4.6vw,2.6rem);margin:6px 0 10px">How MakhOS works</h1>
+    <p class="lead">Everything below is drawn from the open-source kernel (release v1.4.0, AGPL-3.0) and its per-phase design documents. Each subsystem comes with a hand-drawn diagram of the real mechanism.</p>
+    <nav class="anchor-nav" aria-label="Sections">
+      <a href="#kfuzz">KFUZZ</a>
+      <a href="#ufuzz">UFUZZ</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#network">Networking</a>
+      <a href="#selfhost">Self-hosting</a>
+      <a href="#shell">The shell</a>
+    </nav>
+  </div>
+</section>
+
+<!-- ============================================================= KFUZZ -->
+<div class="tech-block" id="kfuzz">
+  <div class="wrap">
+    <h2>🔬 KFUZZ <span class="tag">ring-0 self-fuzzer · since Phase 15</span></h2>
+    <p class="lead">A bad input in ring 0 normally kills the machine. KFUZZ makes it a <em>finding</em>: a coverage-guided fuzzer that runs inside the kernel, calls the kernel's own functions directly, survives the CPU faults it provokes, and prints the exact seed to reproduce each one.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 940 380" role="img" aria-labelledby="kfuzz-t kfuzz-d">
+        <title id="kfuzz-t">KFUZZ sandbox catch-and-recover flow</title>
+        <desc id="kfuzz-d">A seed drives an xorshift64* PRNG into a kernel target. If the target returns, invariant oracles check the heap and process tree, and new coverage feeds the corpus. If the target raises a CPU fault, the IDT exception handler hands control to the setjmp/longjmp sandbox, which unwinds to the harness and emits a crash report with the reproducing seed.</desc>
+        <defs>
+          <marker id="kf-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#8a7d6b"/>
+          </marker>
+          <marker id="kf-arr-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+          </marker>
+          <marker id="kf-arr-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#d1603a"/>
+          </marker>
+        </defs>
+
+        <!-- row 1: seed -> prng -> target -->
+        <rect class="d-box-accent" x="20"  y="40" width="130" height="58" rx="9"/>
+        <text class="d-label" x="85" y="66" text-anchor="middle">seed</text>
+        <text class="d-sub"   x="85" y="84" text-anchor="middle">one 64-bit value</text>
+
+        <rect class="d-box" x="190" y="40" width="150" height="58" rx="9"/>
+        <text class="d-label" x="265" y="66" text-anchor="middle">xorshift64*</text>
+        <text class="d-sub"   x="265" y="84" text-anchor="middle">PRNG</text>
+
+        <rect class="d-box" x="380" y="28" width="210" height="82" rx="9"/>
+        <text class="d-label" x="485" y="54" text-anchor="middle">target</text>
+        <text class="d-sub"   x="485" y="72" text-anchor="middle">heap · pmm · string</text>
+        <text class="d-sub"   x="485" y="88" text-anchor="middle">pthread · shell · netrx</text>
+
+        <line class="d-line" x1="150" y1="69" x2="186" y2="69" marker-end="url(#kf-arr)"/>
+        <line class="d-line" x1="340" y1="69" x2="376" y2="69" marker-end="url(#kf-arr)"/>
+
+        <!-- returns -> oracles -->
+        <rect class="d-box-ok" x="640" y="24" width="270" height="86" rx="9"/>
+        <text class="d-label" x="775" y="50" text-anchor="middle">invariant oracles</text>
+        <text class="d-sub"   x="775" y="68" text-anchor="middle">kheap_check · proc_tree_check</text>
+        <text class="d-sub"   x="775" y="84" text-anchor="middle">bad-free counter</text>
+        <line class="d-line" x1="590" y1="60" x2="636" y2="60" marker-end="url(#kf-arr)"/>
+        <text class="d-sub" x="613" y="48" text-anchor="middle">returns</text>
+
+        <!-- fault path -->
+        <rect class="d-box-danger" x="380" y="160" width="210" height="64" rx="9"/>
+        <text class="d-label" x="485" y="186" text-anchor="middle">IDT exception handler</text>
+        <text class="d-sub"   x="485" y="204" text-anchor="middle">vectors 0–31 · arch/idt.c</text>
+        <line class="d-line-danger" x1="485" y1="110" x2="485" y2="156" marker-end="url(#kf-arr-d)"/>
+        <text class="d-accent" x="612" y="138" text-anchor="middle" fill="#d1603a">CPU fault #PF / #GP</text>
+
+        <rect class="d-box-danger" x="380" y="270" width="210" height="72" rx="9"/>
+        <text class="d-label" x="485" y="296" text-anchor="middle">asm setjmp / longjmp</text>
+        <text class="d-sub"   x="485" y="314" text-anchor="middle">sandbox unwinds to harness</text>
+        <text class="d-sub"   x="485" y="330" text-anchor="middle">longjmp ends with sti</text>
+        <line class="d-line-danger" x1="485" y1="224" x2="485" y2="266" marker-end="url(#kf-arr-d)"/>
+
+        <rect class="d-box-danger" x="640" y="270" width="270" height="72" rx="9"/>
+        <text class="d-label" x="775" y="296" text-anchor="middle">crash report</text>
+        <text class="d-sub"   x="775" y="314" text-anchor="middle">seed + vector + RIP/CR2</text>
+        <text class="d-accent" x="775" y="331" text-anchor="middle">fuzz replay ‹seed› ‹target›</text>
+        <line class="d-line-danger" x1="590" y1="306" x2="636" y2="306" marker-end="url(#kf-arr-d)"/>
+
+        <!-- corpus feedback -->
+        <rect class="d-box" x="640" y="150" width="270" height="48" rx="9"/>
+        <text class="d-label" x="775" y="172" text-anchor="middle">corpus</text>
+        <text class="d-sub"   x="775" y="188" text-anchor="middle">seeds that reach new edges (≤64)</text>
+        <line class="d-line-accent" x1="775" y1="110" x2="775" y2="146" marker-end="url(#kf-arr-a)"/>
+        <text class="d-accent" x="846" y="132" text-anchor="middle">new coverage</text>
+        <!-- corpus back to seed -->
+        <path class="d-line-accent" d="M640,174 C 300,174 85,150 85,102" marker-end="url(#kf-arr-a)"/>
+        <text class="d-accent" x="300" y="166" text-anchor="middle">mutate &amp; re-seed</text>
+      </svg>
+      <figcaption>KFUZZ — a ring-0 fault is caught, tagged with its seed, and the campaign continues.</figcaption>
+    </figure>
+
+    <div class="grid grid-2" style="margin-top:8px">
+      <div>
+        <h3>The ring-0 sandbox</h3>
+        <ul class="key-list">
+          <li><b>setjmp / longjmp in assembly</b> (<code class="inline-code">kernel/kfuzz/jmp.asm</code>) — the freestanding kernel has no libc. A fault inside a target unwinds back to the harness instead of halting the machine.</li>
+          <li><b>Fault interception</b> — when a CPU exception fires while the sandbox is active, <code class="inline-code">arch/idt.c</code> calls <code class="inline-code">kfuzz_report_fault()</code> (recording vector, RIP, CR2) and <code class="inline-code">longjmp</code>s back, ending with <code class="inline-code">sti</code> so interrupts are live again.</li>
+          <li><b>Locks across a fault</b> — a target holding a real mutex (only <code class="inline-code">netrx</code>, which takes <code class="inline-code">net_lock</code>) registers a cleanup callback so the next iteration can't deadlock.</li>
+          <li><b>Proven, not assumed</b> — a test deliberately writes to an unmapped address and asserts the <code class="inline-code">#PF</code> is caught and the kernel is fully functional afterwards.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Coverage, oracles &amp; reproducibility</h3>
+        <ul class="key-list">
+          <li><b>Coverage-guided</b> — subject files are built with <code class="inline-code">-fsanitize-coverage=trace-pc</code>; GCC emits a hook at every basic block, and seeds that reach new edges are kept and mutated. The harness itself is <em>not</em> instrumented.</li>
+          <li><b>Three invariant oracles</b> run after every iteration: the heap walker (<code class="inline-code">kheap_check</code>), the bad-free counter, and the process-tree check — catching silent corruption that never faults.</li>
+          <li><b>Deterministic replay</b> — every iteration is driven by one 64-bit seed, so <code class="inline-code">fuzz replay &lt;seed&gt; &lt;target&gt;</code> reproduces any finding exactly.</li>
+          <li><b>Watchdog</b> — a high-priority thread panics with the culprit seed if a target stops advancing for more than 4 seconds.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:22px">
+      <table class="ftable">
+        <thead><tr><th>Target</th><th>What it exercises</th><th>Local oracle</th></tr></thead>
+        <tbody>
+          <tr><td><code>heap</code></td><td>random <code>kmalloc</code>/<code>kfree</code>/<code>krealloc</code>/<code>kcalloc</code> over 48 live slots</td><td>payload survives, <code>krealloc</code> preserves prefix, <code>kcalloc</code> zeroes</td></tr>
+          <tr><td><code>pmm</code></td><td>random page alloc/free over 32 slots</td><td>every page aligned, never handed out twice while live</td></tr>
+          <tr><td><code>string</code></td><td><code>memcpy</code>/<code>memmove</code>/<code>memset</code>/<code>strlen</code> with guard bands</td><td>matches a naive reference even on overlap; guards intact</td></tr>
+          <tr><td><code>pthread</code></td><td>create/join/detach, mutex &amp; semaphore ops</td><td>global tree + heap consistency</td></tr>
+          <tr><td><code>shell</code></td><td>structured commands and raw random bytes into <code>shell_exec()</code></td><td>must return, never crash</td></tr>
+          <tr><td><code>netrx</code></td><td>bit-flipped / truncated Ethernet+IPv4+TCP frames into the RX path</td><td>never faults or corrupts state on malformed input</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:14px"><a href="blog-kfuzz.html">Read the deep dive: how a kernel fuzzes itself without triple-faulting →</a></p>
+  </div>
+</div>
+
+<!-- ============================================================= UFUZZ -->
+<div class="tech-block" id="ufuzz">
+  <div class="wrap">
+    <h2>🔍 UFUZZ <span class="tag">ring-3 syscall fuzzer · since 1.4</span></h2>
+    <p class="lead">KFUZZ fuzzes the kernel from the inside; UFUZZ attacks it the way a hostile program does — through the syscall interface, from ring 3. It knows the result each call <em>must</em> return, and is built so that every verdict can itself be checked.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 940 400" role="img" aria-labelledby="uf-t uf-d">
+        <title id="uf-t">UFUZZ ring-3 to syscall to oracle flow</title>
+        <desc id="uf-d">An 80-syscall ABI contract feeds a typed program generator that emits an intermediate representation plus the expected result of each call. An independent model re-derives every expectation and must agree. Programs run in an isolated ring-3 worker that crosses the privilege boundary through the syscall ABI; the oracle compares the actual result against the expected one, and disagreements go to triage, then a minimizer. Kernel coverage edges feed a corpus that drives the next generation.</desc>
+        <defs>
+          <marker id="uf-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8a7d6b"/></marker>
+          <marker id="uf-arr-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker>
+        </defs>
+
+        <rect class="d-box" x="20" y="150" width="150" height="70" rx="9"/>
+        <text class="d-label" x="95" y="180" text-anchor="middle">ABI contract</text>
+        <text class="d-sub" x="95" y="198" text-anchor="middle">80 syscalls</text>
+        <text class="d-sub" x="95" y="213" text-anchor="middle">48 impl · 25 partial · 7 stub</text>
+
+        <rect class="d-box-accent" x="210" y="150" width="170" height="70" rx="9"/>
+        <text class="d-label" x="295" y="178" text-anchor="middle">typed generator</text>
+        <text class="d-sub" x="295" y="196" text-anchor="middle">dependency-aware</text>
+        <text class="d-sub" x="295" y="211" text-anchor="middle">→ IR + expected result</text>
+
+        <!-- independent model above generator -->
+        <rect class="d-box" x="210" y="40" width="170" height="64" rx="9"/>
+        <text class="d-label" x="295" y="66" text-anchor="middle">independent model</text>
+        <text class="d-sub" x="295" y="84" text-anchor="middle">re-derives every expectation</text>
+        <line class="d-line-dash" x1="295" y1="104" x2="295" y2="146" marker-end="url(#uf-arr-a)"/>
+        <text class="d-accent" x="360" y="128" text-anchor="middle">must agree</text>
+
+        <line class="d-line" x1="170" y1="185" x2="206" y2="185" marker-end="url(#uf-arr)"/>
+
+        <!-- privilege boundary -->
+        <line x1="430" y1="20" x2="430" y2="300" stroke="#3a3020" stroke-width="1.4" stroke-dasharray="3 5"/>
+        <text class="d-sub" x="430" y="318" text-anchor="middle">privilege boundary</text>
+
+        <!-- ring-3 worker -->
+        <rect class="d-box" x="470" y="150" width="180" height="70" rx="9"/>
+        <text class="d-label" x="560" y="178" text-anchor="middle">ring-3 worker</text>
+        <text class="d-sub" x="560" y="196" text-anchor="middle">isolated · watchdog</text>
+        <text class="d-sub" x="560" y="211" text-anchor="middle">fd baseline · net-zero</text>
+        <line class="d-line" x1="380" y1="185" x2="466" y2="185" marker-end="url(#uf-arr)"/>
+        <text class="d-accent" x="425" y="172" text-anchor="middle">syscall</text>
+
+        <!-- oracle -->
+        <rect class="d-box-accent" x="690" y="150" width="230" height="70" rx="9"/>
+        <text class="d-label" x="805" y="178" text-anchor="middle">oracle: expected vs actual</text>
+        <text class="d-sub" x="805" y="196" text-anchor="middle">errno · fd state · return value</text>
+        <text class="d-sub" x="805" y="211" text-anchor="middle">documented-errno check</text>
+        <line class="d-line" x1="650" y1="185" x2="686" y2="185" marker-end="url(#uf-arr)"/>
+
+        <!-- triage + minimize -->
+        <rect class="d-box" x="560" y="260" width="200" height="60" rx="9"/>
+        <text class="d-label" x="660" y="286" text-anchor="middle">triage</text>
+        <text class="d-sub" x="660" y="304" text-anchor="middle">class · signature · artifact</text>
+        <line class="d-line" x1="805" y1="220" x2="760" y2="262" marker-end="url(#uf-arr)"/>
+        <text class="d-accent" x="800" y="250" text-anchor="middle">disagreement</text>
+
+        <rect class="d-box" x="560" y="340" width="200" height="48" rx="9"/>
+        <text class="d-label" x="660" y="362" text-anchor="middle">minimizer (ddmin)</text>
+        <text class="d-sub" x="660" y="378" text-anchor="middle">replay in a fresh boot</text>
+        <line class="d-line" x1="660" y1="320" x2="660" y2="336" marker-end="url(#uf-arr)"/>
+
+        <!-- corpus feedback -->
+        <rect class="d-box" x="470" y="40" width="440" height="46" rx="9"/>
+        <text class="d-label" x="690" y="62" text-anchor="middle">corpus</text>
+        <text class="d-sub" x="690" y="78" text-anchor="middle">kernel trace-pc edges · structure-aware mutation</text>
+        <line class="d-line-accent" x1="560" y1="150" x2="560" y2="88" marker-end="url(#uf-arr-a)"/>
+        <text class="d-accent" x="520" y="120" text-anchor="middle">edges</text>
+        <path class="d-line-accent" d="M470,63 C 420,63 295,96 295,118" marker-end="url(#uf-arr-a)"/>
+      </svg>
+      <figcaption>UFUZZ — a typed syscall program, a checked oracle, and a path from disagreement to a one-command reproduction.</figcaption>
+    </figure>
+
+    <div class="grid grid-2" style="margin-top:8px">
+      <div>
+        <h3>An oracle that is itself checked</h3>
+        <ul class="key-list">
+          <li><b>Every call carries its required result</b> — not "didn't crash", but <code class="inline-code">-EBADF</code>, slot 3, <code class="inline-code">O_RDWR</code>. Any returned errno must be one the inventory documents.</li>
+          <li><b>A second, independent model</b> re-derives every expectation from the ABI inventory and the kernel headers; the two must agree on all 4099 generated programs, and mutation tests prove the agreement depends on both sides.</li>
+          <li><b>Net-zero accounting</b> — isolated ring-3 workers under a watchdog, with page/heap net-zero checks and an fd baseline that every replay must restore.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Triage → replay → minimize</h3>
+        <ul class="key-list">
+          <li><b>Every event becomes an artifact</b> — classified, deduplicated by signature, carrying the build it came from and a command that replays it in a fresh boot.</li>
+          <li><b>Findings shrink to their essence</b> — <code class="inline-code">ddmin</code> minimization, accepted only on the same signature: three planted bugs reduced from 24–26 calls to 2, 1 and 7.</li>
+          <li><b>Measured, not assumed</b> — coverage-guided mutation vs random generation was compared under a rule fixed in advance; the honest verdict (no measurable difference on this surface) is reported as measured.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="label">The first natural finding</div>
+      <p style="color:var(--muted);margin:0"><b style="color:var(--text)">UF-F001</b> — found by the mutation engine in three independent campaigns, not planted: a zero-length <code class="inline-code">read</code>/<code class="inline-code">write</code> returned 0 without validating the fd (<code class="inline-code">write(-1, buf, 0)&nbsp;==&nbsp;0</code>, where the contract and Linux say <code class="inline-code">-EBADF</code>). Fixed, with the reproducer committed as a permanent regression test.</p>
+    </div>
+    <p style="margin-top:6px"><a href="blog-ufuzz.html">Read the deep dive: attacking a kernel from ring 3 with an oracle →</a></p>
+  </div>
+</div>
+
+<!-- ============================================================= ARCHITECTURE -->
+<div class="tech-block" id="architecture">
+  <div class="wrap">
+    <h2>🧱 Architecture <span class="tag">x86-64 · GRUB / Multiboot2</span></h2>
+    <p class="lead">MakhOS boots with GRUB (Multiboot2), brings up the x86-64 platform, and layers a real userland on top: paging with copy-on-write, a preemptive scheduler, POSIX threads, a VFS with ext2, and ring-3 processes that run unmodified musl and busybox binaries.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 940 440" role="img" aria-labelledby="arch-t arch-d">
+        <title id="arch-t">MakhOS layered architecture</title>
+        <desc id="arch-d">Seven stacked layers from hardware up to ring 3: the x86-64 platform (framebuffer console, GDT, IDT, PIC, PIT, TSS); memory (PMM bitmap, VMM with paging, copy-on-write, NX and W^X, heap with integrity); scheduling (preemptive scheduler, wait queues, pthreads, process tree); networking (BSD sockets, TCP, UDP, ICMP, IPv4, ARP, e1000, PCI); filesystem (VFS, tmpfs, devfs, ext2 read-write, tar initrd, virtio-blk); the process layer (syscalls, ELF loader, fork, execve, signals, pipes, tty); and ring 3 (the shell, coreutils, tcc, make, with KFUZZ running in ring 0).</desc>
+        <defs>
+          <marker id="ar-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8a7d6b"/></marker>
+        </defs>
+        <!-- ring-3 layer (accent top) -->
+        <rect class="d-box-accent" x="40" y="24"  width="860" height="48" rx="8"/>
+        <text class="d-accent" x="60" y="44" fill="#f59e0b">RING 3</text>
+        <text class="d-label" x="60" y="62">/bin/sh + coreutils · tcc · make · busybox + musl static-PIE</text>
+        <text class="d-sub" x="880" y="53" text-anchor="end">KFUZZ runs in ring 0</text>
+
+        <rect class="d-box" x="40" y="80"  width="860" height="48" rx="8"/>
+        <text class="d-accent" x="60" y="100">PROCESS</text>
+        <text class="d-label" x="60" y="118">syscalls · ELF loader · fork / execve · signals · pipes · tty</text>
+
+        <rect class="d-box" x="40" y="136" width="860" height="48" rx="8"/>
+        <text class="d-accent" x="60" y="156">FILESYSTEM</text>
+        <text class="d-label" x="60" y="174">VFS · tmpfs · devfs · ext2 (r/w) · tar initrd · virtio-blk</text>
+
+        <rect class="d-box" x="40" y="192" width="860" height="48" rx="8"/>
+        <text class="d-accent" x="60" y="212">NETWORK</text>
+        <text class="d-label" x="60" y="230">BSD sockets · TCP / UDP / ICMP · IPv4 · ARP · e1000 · PCI</text>
+
+        <rect class="d-box" x="40" y="248" width="860" height="48" rx="8"/>
+        <text class="d-accent" x="60" y="268">SCHEDULER</text>
+        <text class="d-label" x="60" y="286">preemptive scheduler · wait queues · pthreads · process tree</text>
+
+        <rect class="d-box" x="40" y="304" width="860" height="48" rx="8"/>
+        <text class="d-accent" x="60" y="324">MEMORY</text>
+        <text class="d-label" x="60" y="342">PMM (bitmap) · VMM (paging, COW, NX / W^X) · heap (+ integrity)</text>
+
+        <rect class="d-box" x="40" y="360" width="860" height="54" rx="8"/>
+        <text class="d-accent" x="60" y="382">PLATFORM (x86-64)</text>
+        <text class="d-label" x="60" y="402">framebuffer console · GDT · IDT · PIC · PIT · TSS</text>
+
+        <!-- up arrow on the side -->
+        <line class="d-line" x1="922" y1="400" x2="922" y2="40" marker-end="url(#ar-arr)"/>
+        <text class="d-sub" x="936" y="230" text-anchor="middle" transform="rotate(90 936 230)">privilege &amp; abstraction rise ↑</text>
+      </svg>
+      <figcaption>Hardware at the bottom, ring 3 at the top — each layer landed only when its tests were green.</figcaption>
+    </figure>
+
+    <div class="grid grid-3" style="margin-top:8px">
+      <div class="card"><h3>Boot &amp; platform</h3><p>GRUB / Multiboot2 brings the kernel up; it draws to a framebuffer graphics console and programs the GDT, IDT, PIC, PIT and TSS. A higher-half kernel maps itself to the top of the address space.</p></div>
+      <div class="card"><h3>Memory</h3><p>A bitmap physical allocator and a paging VMM with per-process address spaces, copy-on-write fork, and NX / W^X. The kernel heap carries a full integrity walker and stack canaries checked on every context switch.</p></div>
+      <div class="card"><h3>Scheduling</h3><p>Priority run queues with quantum-based preemption at the IRQ tail, sleep and wait queues with timeouts, an idle reaper for detached threads, and clean POSIX threads (mutexes, condvars, semaphores, TLS).</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= NETWORK -->
+<div class="tech-block" id="network">
+  <div class="wrap">
+    <h2>🌐 Networking <span class="tag">PCI + e1000 · RFC 793 TCP</span></h2>
+    <p class="lead">A real network stack from the PCI bus up to a POSIX socket API: an Intel e1000 NIC driven over DMA, ARP / IPv4 / ICMP / UDP, and a full RFC 793 TCP state machine — one lock, one worker thread, trivially free of lock-order bugs.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 940 410" role="img" aria-labelledby="net-t net-d">
+        <title id="net-t">MakhOS network stack layers</title>
+        <desc id="net-d">Application threads enter through the BSD socket API. Below it sit TCP, UDP and ICMP, then IPv4 and ARP, then Ethernet framing, then the devices: an Intel e1000 driver over DMA and a loopback device. All protocol state is under a single net_lock. The e1000 IRQ only posts a semaphore to wake the netd worker thread, which polls devices and runs the ARP and TCP timers; user threads block on per-socket condition variables.</desc>
+        <defs>
+          <marker id="nt-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8a7d6b"/></marker>
+          <marker id="nt-arr-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker>
+        </defs>
+
+        <rect class="d-box-accent" x="40" y="24" width="600" height="46" rx="8"/>
+        <text class="d-label" x="60" y="52">application threads · socket() / bind / listen / accept / connect / send / recv</text>
+
+        <!-- the big net_lock container -->
+        <rect x="40" y="86" width="600" height="230" rx="10" fill="rgba(245,158,11,0.04)" stroke="#3a3020"/>
+        <text class="d-accent" x="56" y="106">under a single net_lock (one mutex, one worker)</text>
+
+        <rect class="d-box" x="60" y="118" width="560" height="44" rx="8"/>
+        <text class="d-label" x="80" y="145">L4 — TCP (RFC 793) · UDP datagram queues · ICMP echo</text>
+
+        <rect class="d-box" x="60" y="172" width="560" height="44" rx="8"/>
+        <text class="d-label" x="80" y="199">L3 — IPv4 (routing, checksums) · ARP (32-entry cache, gleaning)</text>
+
+        <rect class="d-box" x="60" y="226" width="560" height="44" rx="8"/>
+        <text class="d-label" x="80" y="253">L2 — Ethernet framing · dispatch by ethertype</text>
+
+        <rect class="d-box" x="60" y="280" width="270" height="30" rx="7"/>
+        <text class="d-sub" x="195" y="300" text-anchor="middle">e1000 (82540EM) · DMA rings</text>
+        <rect class="d-box" x="350" y="280" width="270" height="30" rx="7"/>
+        <text class="d-sub" x="485" y="300" text-anchor="middle">lo (loopback, loss injection)</text>
+
+        <line class="d-line" x1="340" y1="70" x2="340" y2="114" marker-end="url(#nt-arr)"/>
+
+        <!-- netd + IRQ on the right -->
+        <rect class="d-box" x="690" y="118" width="210" height="76" rx="9"/>
+        <text class="d-label" x="795" y="146" text-anchor="middle">netd thread</text>
+        <text class="d-sub" x="795" y="164" text-anchor="middle">polls devices · 50 ms tick</text>
+        <text class="d-sub" x="795" y="180" text-anchor="middle">arp_timer · tcp_timer</text>
+
+        <rect class="d-box" x="690" y="240" width="210" height="60" rx="9"/>
+        <text class="d-label" x="795" y="266" text-anchor="middle">e1000 IRQ 11</text>
+        <text class="d-sub" x="795" y="284" text-anchor="middle">ack + sem_post only</text>
+
+        <line class="d-line-accent" x1="795" y1="240" x2="795" y2="198" marker-end="url(#nt-arr-a)"/>
+        <text class="d-accent" x="862" y="222" text-anchor="middle">wake</text>
+        <path class="d-line" d="M690,160 C 660,160 645,220 622,250" marker-end="url(#nt-arr)"/>
+        <text class="d-sub" x="690" y="214" text-anchor="middle">poll()</text>
+      </svg>
+      <figcaption>Received frames are processed only by netd; IRQ handlers never take the lock — they only post a semaphore.</figcaption>
+    </figure>
+
+    <div class="grid grid-2" style="margin-top:8px">
+      <div>
+        <h3>The hardware &amp; the model</h3>
+        <ul class="key-list">
+          <li><b>PCI + e1000</b> — configuration mechanism #1, a full bus scan, BAR decoding and bus mastering; 32-descriptor RX/TX rings, IRQ-driven receive, MAC read from the EEPROM.</li>
+          <li><b>One lock, one worker</b> — every piece of protocol state lives under <code class="inline-code">net_lock</code>. IRQ handlers only <code class="inline-code">sem_post</code>; <code class="inline-code">netd</code> does all parsing in thread context.</li>
+          <li><b>Full TCP</b> — all RFC 793 states, 16 KB send/receive rings, flow control with zero-window probing, RTO 300 ms → 3 s, fast retransmit on 3 duplicate ACKs, and a short TIME_WAIT.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Measured behaviour</h3>
+        <div class="stat-row">
+          <div class="stat"><div class="n">~20 ms</div><div class="l">200 KB over loopback TCP</div></div>
+          <div class="stat"><div class="n">byte-exact</div><div class="l">64 KB with 1-in-7 frames dropped (~1.8 s, 12 retransmissions)</div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat"><div class="n">4 / 4</div><div class="l">ICMP echo replies over the e1000</div></div>
+          <div class="stat"><div class="n">&lt; 1 s</div><div class="l">connection refused → RST</div></div>
+        </div>
+        <p style="color:var(--faint);font-size:0.82rem;margin-top:12px">Measured under QEMU TCG (one CPU). Figures are from the public Phase 14 design document.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= SELF-HOSTING -->
+<div class="tech-block" id="selfhost">
+  <div class="wrap">
+    <h2>🧩 Self-hosting <span class="tag">tcc + GNU make on MAKH</span></h2>
+    <p class="lead">MakhOS runs a real C compiler and build system <em>on itself</em>. It rebuilds a program it ships — from its own shipped source — and the rebuilt binary behaves identically. It also runs unmodified busybox and musl static-PIE binaries as ordinary ring-3 processes.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 940 230" role="img" aria-labelledby="sh-t sh-d">
+        <title id="sh-t">Self-hosting toolchain flow on MAKH</title>
+        <desc id="sh-d">MAKH's own shipped source hello.c is driven by GNU make into tcc, which compiles and links it against the staged musl sysroot into an ELF executable. MAKH runs that executable, which exits 42 — the same result as the host-built binary it ships.</desc>
+        <defs>
+          <marker id="sl-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker>
+        </defs>
+        <rect class="d-box" x="20" y="80" width="150" height="66" rx="9"/>
+        <text class="d-label" x="95" y="108" text-anchor="middle">hello.c</text>
+        <text class="d-sub" x="95" y="126" text-anchor="middle">MAKH's shipped source</text>
+
+        <rect class="d-box" x="210" y="80" width="130" height="66" rx="9"/>
+        <text class="d-label" x="275" y="108" text-anchor="middle">GNU make</text>
+        <text class="d-sub" x="275" y="126" text-anchor="middle">drives the build</text>
+
+        <rect class="d-box-accent" x="380" y="72" width="170" height="82" rx="9"/>
+        <text class="d-label" x="465" y="100" text-anchor="middle">tcc</text>
+        <text class="d-sub" x="465" y="118" text-anchor="middle">compile + assemble + link</text>
+        <text class="d-sub" x="465" y="134" text-anchor="middle">vs. musl sysroot</text>
+
+        <rect class="d-box" x="590" y="80" width="150" height="66" rx="9"/>
+        <text class="d-label" x="665" y="108" text-anchor="middle">ELF executable</text>
+        <text class="d-sub" x="665" y="126" text-anchor="middle">static non-PIE @ 0x400000</text>
+
+        <rect class="d-box-ok" x="780" y="80" width="140" height="66" rx="9"/>
+        <text class="d-label" x="850" y="104" text-anchor="middle">MAKH runs it</text>
+        <text class="d-accent" x="850" y="124" text-anchor="middle" fill="#7bd88f">exit 42 ✓</text>
+        <text class="d-sub" x="850" y="138" text-anchor="middle">identical to shipped</text>
+
+        <line class="d-line-accent" x1="170" y1="113" x2="206" y2="113" marker-end="url(#sl-arr)"/>
+        <line class="d-line-accent" x1="340" y1="113" x2="376" y2="113" marker-end="url(#sl-arr)"/>
+        <line class="d-line-accent" x1="550" y1="113" x2="586" y2="113" marker-end="url(#sl-arr)"/>
+        <line class="d-line-accent" x1="740" y1="113" x2="776" y2="113" marker-end="url(#sl-arr)"/>
+      </svg>
+      <figcaption>The self-hosting summit: MAKH regenerates a piece of its own userland, on itself, with no host in the loop.</figcaption>
+    </figure>
+
+    <div class="grid grid-2" style="margin-top:8px">
+      <div>
+        <h3>A toolchain on the OS</h3>
+        <ul class="key-list">
+          <li><b>tcc</b> runs as a ring-3 program, doing codegen → object → link internally, so MAKH never needs an external <code class="inline-code">as</code> or <code class="inline-code">ld</code>.</li>
+          <li><b>GNU make</b> drives tcc across a multi-file project via <code class="inline-code">fork</code>/<code class="inline-code">exec</code>/<code class="inline-code">wait</code>.</li>
+          <li><b>One source of truth</b> — the thing MAKH rebuilds is literally its own shipped <code class="inline-code">user/musl/hello.c</code>, copied into the initrd; there is no second copy to drift.</li>
+          <li>That the rebuilt binary <b>exits 42</b> proves tcc's codegen, musl's crt, MAKH's <code class="inline-code">arch_prctl</code> TLS, the heap syscalls and the stdio path are all correct together.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Real, unmodified binaries</h3>
+        <ul class="key-list">
+          <li><b>musl + busybox</b> static-PIE executables run as ordinary ring-3 processes — a static-PIE ELF loader with full auxv and the per-process FS base for TLS.</li>
+          <li>Full process primitives: <code class="inline-code">fork</code> (copy-on-write), <code class="inline-code">execve</code>, <code class="inline-code">wait4</code>, pipes, job control and signals.</li>
+          <li>A higher-half kernel freed <code class="inline-code">0x400000</code> for standard non-PIE binaries, which is what makes tcc's own output loadable.</li>
+          <li>Persistent storage via a polled virtio-blk disk and a read/write <b>ext2</b> filesystem, up to multi-block-group and triple-indirect files.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= SHELL -->
+<div class="tech-block" id="shell">
+  <div class="wrap">
+    <h2>🖥️ The shell <span class="tag">framebuffer console · ring-3 /bin/sh</span></h2>
+    <p class="lead">MakhOS boots to a fennec splash with a spinning loader, then hands off to an interactive ring-3 <code class="inline-code">/bin/sh</code> on a framebuffer graphics console — a raw-mode line editor with command history, pipelines, job control and about 25 commands.</p>
+
+    <div class="grid grid-2" style="margin-top:8px;align-items:start">
+      <div>
+        <ul class="key-list">
+          <li><b>Framebuffer console</b> — GRUB gives a 1024×768×32 linear framebuffer; MAKH renders antialiased 8×16 glyphs over a warm 16-colour palette, with a VGA-text fallback and an unchanged serial mirror.</li>
+          <li><b>Raw-mode line editor</b> — the shell flips the terminal to raw mode via <code class="inline-code">termios</code> / <code class="inline-code">TCGETS</code> / <code class="inline-code">TCSETS</code>, owns the line, and echoes it itself.</li>
+          <li><b>Command history</b> — a ring of the last 32 entries; <b>Up</b>/<b>Down</b> walk it, with navigation keys delivered as ANSI escapes.</li>
+          <li><b>Editing shortcuts</b> — Left/Right, Ctrl+A/E (line start/end), Ctrl+U/K (kill), Backspace/Delete.</li>
+          <li><b>Pipes &amp; job control</b> — <code class="inline-code">a | b</code> pipelines, each command its own process group, Ctrl+C / Ctrl+Z hitting the job and not the shell.</li>
+          <li><b>UX</b> — a prompt that shows the cwd, TAB completion for commands and paths, redirection (<code class="inline-code">&gt;</code> <code class="inline-code">&gt;&gt;</code> <code class="inline-code">&lt;</code>) and heredocs, and a cyan block cursor.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="terminal" role="img" aria-label="MakhOS shell commands grouped by area: files, text, system, network and develop.">
+          <div class="bar"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span><span class="title">~25 commands in /bin</span></div>
+<pre><span class="o"># files</span>
+<span class="c">ls -la  cat  cp  mv  ln -s  rm  mkdir
+rmdir  touch  pwd  chmod  edit</span>
+<span class="o"># text</span>
+<span class="c">echo  grep  head  tail  wc  sort  cut</span>
+<span class="o"># system</span>
+<span class="c">whoami  id  uname  env  date  clear  sleep</span>
+<span class="o"># network</span>
+<span class="c">ping  ifconfig  curl  wget  nc</span>
+<span class="o"># develop</span>
+<span class="c">tcc  cc  make</span></pre>
+        </div>
+        <p style="color:var(--faint);font-size:0.82rem;margin-top:12px">Type <code class="inline-code">help</code> for the full A-to-Z. Status codes follow the shell convention (0 ok, 1 error, 2 usage, 127 not found).</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CTA -->
+<section>
+  <div class="wrap">
+    <div class="band">
+      <h2>Read the docs, or the write-ups</h2>
+      <p>The full per-phase design documents live on GitHub — 40+ phases, each with its own doc and a green test suite.</p>
+      <div class="btn-row" style="justify-content:center">
+        <a class="btn btn-primary" href="docs.html">Browse the documentation</a>
+        <a class="btn btn-ghost" href="blog.html">Read the blog</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col" style="max-width:300px">
+        <div class="brand" style="margin-bottom:10px"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></div>
+        <p style="color:var(--faint);font-size:0.86rem;margin:0">A from-scratch x86-64 operating system kernel by MAKH-SYS. Open core under AGPL-3.0, with a commercial edition.</p>
+      </div>
+      <div class="footer-col"><h4>Project</h4><a href="technology.html">Technology</a><a href="blog.html">Blog</a><a href="docs.html">Documentation</a></div>
+      <div class="footer-col"><h4>Organization</h4><a href="about.html">About MAKH-SYS</a><a href="licensing.html">Licensing</a><a href="about.html#contact">Contact</a></div>
+      <div class="footer-col"><h4>Source</h4><a href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">GitHub ↗</a><a href="https://github.com/medaminkh-dev/MAKH/releases/tag/v1.4.0" target="_blank" rel="noopener">Release v1.4.0 ↗</a></div>
+    </div>
+    <div class="footer-bottom">
+      <span class="lic">AGPL-3.0 open core + commercial edition · © 2026 MAKH-SYS</span>
+      <span>Built brick by brick</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

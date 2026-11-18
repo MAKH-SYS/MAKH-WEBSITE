@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attacking a kernel from ring 3 with an oracle — MakhOS</title>
+<meta name="description" content="Inside UFUZZ, the ring-3 syscall fuzzer in MakhOS: typed syscall programs over an 80-call ABI contract, an oracle that is itself re-derived by an independent model, and a path from disagreement to a minimized, replayable finding.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="technology.html">Technology</a>
+      <a href="blog.html" class="active">Blog</a>
+      <a href="docs.html">Docs</a>
+      <a href="about.html">About</a>
+      <a href="licensing.html" class="cta">Licensing</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+<article class="article" style="padding:48px 0">
+  <p class="eyebrow"><a href="blog.html" style="color:var(--accent)">← Blog</a> · Syscall fuzzing</p>
+  <h1>Attacking a kernel from ring 3 with an oracle</h1>
+  <p class="meta">MakhOS engineering · UFUZZ (release 1.4) · drawn from the public design docs</p>
+
+  <p>KFUZZ fuzzes the kernel from the inside. <strong>UFUZZ</strong> attacks it the way a hostile program really would — from ring 3, through the syscall interface — and it is built around one uncomfortable question: <em>a fuzzer is only as good as its oracle, so how do you know the oracle is right?</em> An oracle that shares the generator's mistakes is blind exactly where it matters most.</p>
+
+  <p>UFUZZ's answer is that every verdict can be checked. Instead of the usual "did it crash?", every generated syscall carries the result the ABI contract <strong>requires</strong> — not a vague expectation, but <span class="inline-code">-EBADF</span>, slot 3, <span class="inline-code">O_RDWR</span>. Any errno the kernel returns must be one the inventory documents. And every replay pass must leave the file-descriptor table exactly as the worker found it.</p>
+
+  <h2>Typed programs over a contract</h2>
+  <p>The campaign starts from an ABI inventory of <strong>80 syscalls</strong> — 48 implemented, 25 partial, 7 stub — with every pointer's direction and size, every resource's lifecycle, and every documented errno written down. From that, a dependency-aware generator emits <em>typed</em> programs as an intermediate representation: a program that opens a file and then reads it knows the read depends on the open's returned fd. Each call in the IR is paired with its expected result, and a Python structural validator checks every generated program before it ever runs.</p>
+
+  <p>The programs then run in an <strong>isolated ring-3 worker</strong> under a watchdog, with net-zero page and heap accounting and a baseline-relative fd model. A worker that crashes does not stop the campaign; the supervisor turns a VM timeout into a <span class="inline-code">KERNEL_HANG</span> record and reboots to continue.</p>
+
+  <h2>The oracle that is itself checked</h2>
+  <p>Here is the part that makes UFUZZ unusual. A <strong>second, independent model</strong> re-derives every expectation from the same ABI inventory and the kernel's own headers — separately from the generator. The two must agree on all <strong>4099</strong> generated programs. If they ever disagree, either the kernel is wrong or one of the two models is, and both cases are worth knowing. Mutation tests deliberately break each side to prove the agreement genuinely depends on both — an oracle that can't be made to disagree isn't checking anything.</p>
+
+  <blockquote>This discipline caught its own mistakes, too. In three campaigns, 22 of the 26 programs the mutated arms flagged turned out to be errors in the independent deriver itself (an fd bind takes whatever the call returns) — now fixed and pinned by tests. The oracle improving the oracle is the point.</blockquote>
+
+  <h2>From disagreement to a one-line reproduction</h2>
+  <p>When the kernel and the expectation disagree, the event becomes an <strong>artifact</strong>: classified, deduplicated by signature, stamped with the build it came from, and carrying a command that replays it in a fresh boot. Then it is shrunk. A delta-debugging (<span class="inline-code">ddmin</span>) minimizer removes calls as long as the finding keeps the same signature at a declared threshold, so the reproduction collapses to its essence. Three planted kernel bugs minimized from 24–26 calls down to <strong>2, 1 and 7</strong> calls respectively.</p>
+
+<pre class="code"># replay one program deterministically, in a fresh boot
+make test-suite SUITE=ufuzzreplay REPLAY=5:3:23758
+
+# triage a campaign log into deduplicated, replayable artifacts
+python3 tools/ufuzz_triage.py build/suite.log --check</pre>
+
+  <h2>The first natural finding: UF-F001</h2>
+  <p>A fuzzer earns its keep when it finds a bug nobody planted. UF-F001 was found by the structure-aware mutation engine in three independent campaigns: a zero-length <span class="inline-code">read</span> or <span class="inline-code">write</span> returned 0 <em>without validating the file descriptor</em>. So <span class="inline-code">write(-1, buf, 0)</span> returned 0, where both the ABI contract and Linux say it must return <span class="inline-code">-EBADF</span>. No data or privilege impact — but a real contract violation. The fix makes a zero-length call report exactly the fd error a one-byte call would, and the committed reproducer is now a permanent regression test (<span class="inline-code">ufuzz.uf_f001_zero_length_validates_fd</span>): four programs failed before the fix, all pass after.</p>
+
+  <h2>Measured, not assumed</h2>
+  <p>It would be easy to claim coverage-guided mutation beats random generation and move on. UFUZZ instead measured it, under a rule fixed <em>before</em> the campaigns ran — and reported the honest result: no measurable difference on this particular surface. The 1.4 release is tagged with two conditions openly left open (user-space coverage domains and a single-CPU race mode), because nothing is claimed that wasn't shown. Race testing is explicitly deferred to the multiprocessing line, where it can be measured on more than one CPU rather than simulated on one.</p>
+
+  <div class="callout">
+    <div class="label">Where to look next</div>
+    <p style="margin:0;color:var(--muted)">The companion piece covers <a href="blog-kfuzz.html">KFUZZ — how a kernel fuzzes itself without triple-faulting</a>. Or read the <a href="technology.html#ufuzz">UFUZZ technology page</a>, or the 1.4.0 release notes and ABI document on <a href="https://github.com/medaminkh-dev/MAKH/blob/main/docs/RELEASE_1.4.0.md" target="_blank" rel="noopener">GitHub ↗</a>.</p>
+  </div>
+</article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col" style="max-width:300px">
+        <div class="brand" style="margin-bottom:10px"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></div>
+        <p style="color:var(--faint);font-size:0.86rem;margin:0">A from-scratch x86-64 operating system kernel by MAKH-SYS. Open core under AGPL-3.0, with a commercial edition.</p>
+      </div>
+      <div class="footer-col"><h4>Project</h4><a href="technology.html">Technology</a><a href="blog.html">Blog</a><a href="docs.html">Documentation</a></div>
+      <div class="footer-col"><h4>Organization</h4><a href="about.html">About MAKH-SYS</a><a href="licensing.html">Licensing</a><a href="about.html#contact">Contact</a></div>
+      <div class="footer-col"><h4>Source</h4><a href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">GitHub ↗</a><a href="https://github.com/medaminkh-dev/MAKH/releases/tag/v1.4.0" target="_blank" rel="noopener">Release v1.4.0 ↗</a></div>
+    </div>
+    <div class="footer-bottom">
+      <span class="lic">AGPL-3.0 open core + commercial edition · © 2026 MAKH-SYS</span>
+      <span>Built brick by brick</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

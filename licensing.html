@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Licensing — MakhOS</title>
+<meta name="description" content="MakhOS is dual-licensed: free under the GNU AGPL-3.0, or available under a commercial license for proprietary and hosted use. Plus a teaser of the MakhOS Security Edition (2.0).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="technology.html">Technology</a>
+      <a href="blog.html">Blog</a>
+      <a href="docs.html">Docs</a>
+      <a href="about.html">About</a>
+      <a href="licensing.html" class="cta active">Licensing</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="section-tight" style="padding-top:44px">
+  <div class="wrap">
+    <p class="eyebrow">Licensing</p>
+    <h1 style="font-size:clamp(1.8rem,4.6vw,2.6rem);margin:6px 0 10px">Dual-licensed: open core, commercial edition</h1>
+    <p class="lead">MakhOS is dual-licensed — you choose the license that fits how you use it. The open kernel is free under the GNU AGPL-3.0; a commercial license covers proprietary and hosted use that needs to keep its changes private.</p>
+  </div>
+</section>
+
+<section style="padding-top:12px">
+  <div class="wrap">
+    <div class="grid grid-2">
+      <div class="card">
+        <span class="badge green" style="margin-bottom:10px"><span class="dot"></span>Open source</span>
+        <h3>GNU AGPL-3.0</h3>
+        <p style="margin-bottom:14px">Free for everyone who shares their modifications — including when running a modified MakhOS as a network service. The AGPL's network clause (§13) means that if you run a modified MakhOS and let people interact with it over a network, you must offer them the complete corresponding source of your modified version.</p>
+        <p style="color:var(--text);font-weight:600;margin-bottom:6px;font-family:var(--mono);font-size:0.9rem">Right for:</p>
+        <p>Research, teaching, hobby projects, open-source products, and anyone happy to publish their modifications.</p>
+      </div>
+      <div class="card" style="border-color:var(--border-lit)">
+        <span class="badge" style="margin-bottom:10px"><span class="dot"></span>Commercial</span>
+        <h3>Commercial license</h3>
+        <p style="margin-bottom:14px">For products, appliances and hosted services that need to keep their changes private, or that want support and a warranty. Paid, per agreement.</p>
+        <p style="color:var(--text);font-weight:600;margin-bottom:6px;font-family:var(--mono);font-size:0.9rem">Right for:</p>
+        <ul class="key-list" style="margin-top:4px">
+          <li>Embedding MakhOS in a proprietary device, appliance or product without releasing your source.</li>
+          <li>Running a modified MakhOS as a hosted / cloud / managed service with your changes kept private.</li>
+          <li>Organisations whose policy does not allow AGPL software.</li>
+          <li>Anyone who needs a warranty, indemnification, guaranteed support or custom work.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:12px">
+  <div class="wrap">
+    <h2 class="section-title">What each license allows</h2>
+    <div class="table-wrap" style="margin-top:16px">
+      <table class="ftable">
+        <thead>
+          <tr><th>&nbsp;</th><th>AGPL-3.0 (open source)</th><th>Commercial license</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><b style="color:var(--text)">Cost</b></td><td>Free</td><td>Paid, per agreement</td></tr>
+          <tr><td><b style="color:var(--text)">Use, study, modify</b></td><td>✅</td><td>✅</td></tr>
+          <tr><td><b style="color:var(--text)">Run it yourself, internally, unmodified</b></td><td>✅</td><td>✅</td></tr>
+          <tr><td><b style="color:var(--text)">Ship it inside a product you distribute</b></td><td>✅ if you release that product's MakhOS source (and your changes) under the AGPL</td><td>✅ keep your changes private</td></tr>
+          <tr><td><b style="color:var(--text)">Offer a modified MakhOS over a network (cloud, hosting, SaaS)</b></td><td>✅ if you give those users the complete corresponding source (AGPL §13)</td><td>✅ keep your changes private</td></tr>
+          <tr><td><b style="color:var(--text)">Warranty, support, SLA, indemnity</b></td><td>❌ none</td><td>✅ available</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="color:var(--faint);font-size:0.86rem;margin-top:12px">Summarised from the project's <a href="https://github.com/medaminkh-dev/MAKH/blob/main/LICENSING.md" target="_blank" rel="noopener">LICENSING.md</a>. Trademarks: the AGPL covers the code, not the names — "MakhOS", "MAKH", "KFUZZ" and "UFUZZ" may not be used to name or promote a modified version or a different product without permission.</p>
+  </div>
+</section>
+
+<!-- ===================== SECURITY EDITION TEASER ===================== -->
+<section style="padding-top:12px">
+  <div class="wrap">
+    <div class="band" style="text-align:left">
+      <span class="badge" style="margin-bottom:12px"><span class="dot"></span>MakhOS Security Edition · 2.0 · coming soon</span>
+      <h2 style="font-size:clamp(1.5rem,3.4vw,2rem)">MakhOS Security Edition</h2>
+      <!-- Teaser copy below is used verbatim as provided; no technical specifics or numbers added. -->
+      <p style="max-width:68ch;font-size:1.08rem;color:var(--text)">MakhOS Security Edition brings symmetric multiprocessing with a built-in verification layer — deterministic concurrency testing, strict per-CPU partitioning into isolated cells, and a self-fuzzing scheduler. Available under commercial license.</p>
+      <div class="btn-row" style="margin-top:20px">
+        <a class="btn btn-primary" href="#contact">Contact us for a commercial license</a>
+        <a class="btn btn-ghost" href="technology.html">Explore the open kernel</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CONTACT CTA ===================== -->
+<section id="contact" style="padding-top:12px">
+  <div class="wrap" style="max-width:740px">
+    <div class="card center" style="padding:30px">
+      <h2 class="section-title" style="margin-bottom:8px">Contact us for a commercial license</h2>
+      <p style="color:var(--muted);max-width:52ch;margin:0 auto 18px">Tell us how you plan to use MakhOS — embedded, hosted, or a modified service — and we'll find the right license, support level and terms.</p>
+      <!-- Placeholder address: contact@makh-sys.example is an intentional, non-real placeholder (RFC 2606 .example). Replace with a real address before launch. -->
+      <a class="btn btn-primary" href="mailto:contact@makh-sys.example?subject=MakhOS%20commercial%20license%20enquiry">Email contact@makh-sys.example</a>
+      <p style="color:var(--faint);font-size:0.82rem;margin-top:14px">
+        <strong>Placeholder address</strong> — <code class="inline-code">contact@makh-sys.example</code> is not a live inbox. You can also reach the copyright holder through the maintainer's GitHub profile,
+        <a href="https://github.com/medaminkh-dev" target="_blank" rel="noopener">@medaminkh-dev</a>.
+      </p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col" style="max-width:300px">
+        <div class="brand" style="margin-bottom:10px"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></div>
+        <p style="color:var(--faint);font-size:0.86rem;margin:0">A from-scratch x86-64 operating system kernel by MAKH-SYS. Open core under AGPL-3.0, with a commercial edition.</p>
+      </div>
+      <div class="footer-col"><h4>Project</h4><a href="technology.html">Technology</a><a href="blog.html">Blog</a><a href="docs.html">Documentation</a></div>
+      <div class="footer-col"><h4>Organization</h4><a href="about.html">About MAKH-SYS</a><a href="licensing.html">Licensing</a><a href="about.html#contact">Contact</a></div>
+      <div class="footer-col"><h4>Source</h4><a href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">GitHub ↗</a><a href="https://github.com/medaminkh-dev/MAKH/releases/tag/v1.4.0" target="_blank" rel="noopener">Release v1.4.0 ↗</a></div>
+    </div>
+    <div class="footer-bottom">
+      <span class="lic">AGPL-3.0 open core + commercial edition · © 2026 MAKH-SYS</span>
+      <span>Built brick by brick</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

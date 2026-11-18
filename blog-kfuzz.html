@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a kernel fuzzes itself without triple-faulting — MakhOS</title>
+<meta name="description" content="Inside KFUZZ, the ring-0 self-fuzzer in MakhOS: an assembly setjmp/longjmp sandbox that survives #PF/#GP faults, coverage-guided feedback, invariant oracles, and exact seed replay.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="technology.html">Technology</a>
+      <a href="blog.html" class="active">Blog</a>
+      <a href="docs.html">Docs</a>
+      <a href="about.html">About</a>
+      <a href="licensing.html" class="cta">Licensing</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+<article class="article" style="padding:48px 0">
+  <p class="eyebrow"><a href="blog.html" style="color:var(--accent)">← Blog</a> · Kernel fuzzing</p>
+  <h1>How a kernel fuzzes itself without triple-faulting</h1>
+  <p class="meta">MakhOS engineering · KFUZZ (Phase 15) · drawn from the public design docs</p>
+
+  <p>A fuzzer feeds a program random input and watches for crashes. Doing that to a kernel usually means an external harness — <span class="inline-code">syzkaller</span>-style — driving it from user space through syscalls. MakhOS does something less common: it fuzzes its kernel <strong>from the inside, in ring 0</strong>. A sandboxed kernel thread generates random inputs and calls the kernel's own functions directly — the heap allocator, the physical page allocator, <span class="inline-code">memmove</span>, the pthreads API, the shell parser and the network receive path — at full speed, with no privilege boundary in the way.</p>
+
+  <p>The obvious problem: a bad input in ring 0 normally kills the machine. A stray write faults, the fault handler faults, and the CPU triple-faults into a reset. The whole trick of KFUZZ is to make those faults <strong>survivable and reproducible</strong> — every crash is caught, tagged with the exact seed that produced it, and the campaign keeps going.</p>
+
+  <h2>The ring-0 sandbox</h2>
+  <p>The core is a <span class="inline-code">setjmp</span>/<span class="inline-code">longjmp</span> pair written in assembly (<span class="inline-code">kernel/kfuzz/jmp.asm</span>), because the freestanding kernel has no libc to borrow one from. One iteration looks like this:</p>
+
+<pre class="code">int jumped = kfuzz_setjmp(sb.jb);   // save callee-saved regs, rsp, return addr
+if (jumped) {
+    // arrived here via a fault -&gt; longjmp; sb.fault_* describe it
+    if (sb.cleanup) sb.cleanup();   // drop any lock the target held
+    log("CRASH seed=... vector=... replay: fuzz replay ...");
+    return CRASH;
+}
+sb.active = 1;
+target-&gt;fn(&amp;rng, iters);            // may fault anywhere, arbitrarily deep
+sb.active = 0;</pre>
+
+  <p>The second half of the magic is in the interrupt descriptor table. When a CPU exception (vectors 0–31) fires while the sandbox is active, the handler in <span class="inline-code">kernel/arch/idt.c</span> hands control to the sandbox instead of panicking:</p>
+
+<pre class="code">if (vector &lt; 32 &amp;&amp; kfuzz_in_sandbox())
+    kfuzz_report_fault(regs);       // records vector/rip/cr2, then longjmp</pre>
+
+  <p><span class="inline-code">kfuzz_report_fault()</span> records the fault and <span class="inline-code">longjmp</span>s back to the harness. One subtlety that would otherwise bite: the fault was taken through an interrupt gate, which clears the interrupt flag, so <span class="inline-code">kfuzz_longjmp</span> ends with an explicit <span class="inline-code">sti</span> — otherwise the harness would resume with interrupts off and the next timer tick would never arrive.</p>
+
+  <blockquote>Locks across a fault are the one place the abstraction leaks. A target that holds a real mutex — only <span class="inline-code">netrx</span>, which takes <span class="inline-code">net_lock</span> around <span class="inline-code">net_input</span> — registers a <span class="inline-code">cleanup</span> callback. On recovery the harness calls it to release the lock, or the next iteration would deadlock. Everything else is guarded only by IRQ-off critical sections, which the <span class="inline-code">sti</span> already restores.</blockquote>
+
+  <p>This is validated, not asserted on faith. A dedicated test, <span class="inline-code">kfuzz.sandbox_recovers_from_page_fault</span>, runs a target that deliberately writes to an unmapped canonical address, then checks that the <span class="inline-code">#PF</span> was caught and that the kernel is fully functional afterwards — it allocates, walks the heap, and runs a clean campaign.</p>
+
+  <h2>Coverage feedback, cheaply</h2>
+  <p>A blind fuzzer wastes almost all its time re-exploring the same paths. KFUZZ is coverage-guided: the subject files — <span class="inline-code">kheap.c</span>, <span class="inline-code">pmm.c</span>, <span class="inline-code">string.c</span>, <span class="inline-code">shell.c</span> and the whole <span class="inline-code">net/</span> stack — are compiled with <span class="inline-code">-fsanitize-coverage=trace-pc</span>, so GCC emits a call at every basic block:</p>
+
+<pre class="code">void __sanitizer_cov_trace_pc(void) {
+    if (!cov_enabled) return;
+    uint64_t pc  = (uint64_t)__builtin_return_address(0);
+    uint32_t idx = (uint32_t)((pc * GOLDEN) &gt;&gt; 48) &amp; (COV_BITS - 1);
+    cov_map[idx &gt;&gt; 6] |= 1ull &lt;&lt; (idx &amp; 63);     // set a bit; idempotent
+}</pre>
+
+  <p>Setting a bit is idempotent, so no lock is needed — a rare lost update under preemption only <em>under</em>-counts, it never corrupts. The harness itself is deliberately <strong>not</strong> instrumented, so the map measures the code under test rather than the fuzzer. A seed that raises the edge count is kept in a small corpus (up to 64 entries); each iteration either mutates a corpus seed or draws a fresh one, so inputs that reach new code are favoured. That is coverage-guided fuzzing in miniature.</p>
+
+  <h2>One seed, exactly reproducible</h2>
+  <p>Reproducibility is what turns a crash into a bug report. Every iteration is driven entirely by one 64-bit seed through an <span class="inline-code">xorshift64*</span> generator — three shifts and a multiply — so a finding replays bit-for-bit:</p>
+
+<pre class="code">MakhOS&gt; fuzz replay 0x609a5f1aa29f9058 netrx
+replay seed=0x609a5f1aa29f9058 target=netrx -&gt; clean</pre>
+
+  <p>The crash log prints that exact command for you. No saved input file, no flaky "it happened once" — just the seed.</p>
+
+  <h2>Oracles: catching corruption that never faults</h2>
+  <p>Not every bug is a fault. A double-free or a buffer overrun can leave the machine running but the kernel's invariants quietly broken. So after <em>every</em> target run, three oracles must hold or the seed is reported as an <span class="inline-code">ORACLE FAIL</span>:</p>
+  <ul>
+    <li><strong>kheap_check()</strong> — every heap block's magic, size, alignment and footer, the free list, and the <span class="inline-code">heap_used</span> accounting are all consistent.</li>
+    <li><strong>kheap_get_bad_frees()</strong> — unchanged, so no double or wild free slipped through.</li>
+    <li><strong>proc_tree_check()</strong> — the process tree's parent/child links are intact.</li>
+  </ul>
+  <p>These are the same oracles that were built during an earlier bug hunt in the networking stack, now doing permanent duty. And because a target can <em>hang</em> rather than crash, a high-priority watchdog thread reads a heartbeat the campaign bumps each iteration; if it stops advancing for more than four seconds, the watchdog panics with the culprit seed. That is not hypothetical — it fired the first time the <span class="inline-code">shell</span> target was allowed to run <span class="inline-code">ping</span> to an unreachable host, which blocks for seconds on ARP timeouts. A real "this input takes too long" finding.</p>
+
+  <h2>What it proves</h2>
+  <p>Across the test and stress runs, the heap, pmm, string, pthread, shell and netrx targets run clean over hundreds of thousands of iterations — strong evidence that those subsystems handle random and malformed input without faulting, leaking, or breaking their invariants. The sandbox recovery itself is proven by the page-fault injection test. The self-fuzzer is now permanent infrastructure: every <span class="inline-code">make test</span> runs it, and <span class="inline-code">make stress</span> runs the whole thing 20+ times in parallel. A new subsystem gets fuzzed for free by adding a target and, if it has integrity invariants, wiring them into <span class="inline-code">oracles_ok()</span>.</p>
+
+  <div class="callout">
+    <div class="label">Where to look next</div>
+    <p style="margin:0;color:var(--muted)">The companion piece covers <a href="blog-ufuzz.html">UFUZZ — attacking the kernel from ring 3 with an oracle</a>. Or read the <a href="technology.html#kfuzz">KFUZZ technology page</a>, or the full Phase 15 design document on <a href="https://github.com/medaminkh-dev/MAKH/blob/main/docs/PHASE15_KFUZZ.md" target="_blank" rel="noopener">GitHub ↗</a>.</p>
+  </div>
+</article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col" style="max-width:300px">
+        <div class="brand" style="margin-bottom:10px"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></div>
+        <p style="color:var(--faint);font-size:0.86rem;margin:0">A from-scratch x86-64 operating system kernel by MAKH-SYS. Open core under AGPL-3.0, with a commercial edition.</p>
+      </div>
+      <div class="footer-col"><h4>Project</h4><a href="technology.html">Technology</a><a href="blog.html">Blog</a><a href="docs.html">Documentation</a></div>
+      <div class="footer-col"><h4>Organization</h4><a href="about.html">About MAKH-SYS</a><a href="licensing.html">Licensing</a><a href="about.html#contact">Contact</a></div>
+      <div class="footer-col"><h4>Source</h4><a href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">GitHub ↗</a><a href="https://github.com/medaminkh-dev/MAKH/releases/tag/v1.4.0" target="_blank" rel="noopener">Release v1.4.0 ↗</a></div>
+    </div>
+    <div class="footer-bottom">
+      <span class="lic">AGPL-3.0 open core + commercial edition · © 2026 MAKH-SYS</span>
+      <span>Built brick by brick</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

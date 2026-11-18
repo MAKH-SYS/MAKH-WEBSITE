@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MakhOS — a from-scratch x86-64 kernel that fuzzes itself</title>
+<meta name="description" content="MakhOS is a from-scratch x86-64 operating system kernel that fuzzes itself from ring 0 and from ring 3 — and compiles itself. Open source (AGPL-3.0) with a commercial edition, from MAKH-SYS.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html">
+      <span class="glyph">🦊</span>
+      <span>MAKH<b>OS</b></span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html" class="active">Home</a>
+      <a href="technology.html">Technology</a>
+      <a href="blog.html">Blog</a>
+      <a href="docs.html">Docs</a>
+      <a href="about.html">About</a>
+      <a href="licensing.html" class="cta">Licensing</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+
+<!-- ===================== HERO ===================== -->
+<section class="hero-pro">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">MAKH-SYS · Systems software, engineered from scratch</p>
+      <h1>The x86-64 kernel that fuzzes itself.</h1>
+      <p class="pitch">MakhOS is a from-scratch operating system kernel in freestanding C and assembly — no Linux, no BSD underneath — hardened by two fuzzers that attack it from both sides of the privilege boundary, and proven by 240 in-kernel tests on every push.</p>
+      <div class="btn-row" style="margin-top:26px">
+        <a class="btn btn-primary btn-lg" href="technology.html">Explore the technology</a>
+        <a class="btn btn-ghost btn-lg" href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">View on GitHub ↗</a>
+      </div>
+      <div class="trust">
+        <b>Open source under AGPL-3.0</b>
+        <span class="sep">·</span>
+        <b>Release v1.4.0</b>
+        <span class="sep">·</span>
+        <b>Commercial edition available</b>
+      </div>
+    </div>
+    <div class="hero-logo">
+      <!-- The one external image allowed: the project's own fennec logo, hosted on Cloudinary (from the public README). -->
+      <img src="https://res.cloudinary.com/dqtzw37rg/image/upload/v1772868531/MAKH-Vector_dbnspj.png"
+           alt="MakhOS fennec logo — a from-scratch x86-64 operating system kernel">
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PROOF STRIP ===================== -->
+<section style="padding-top:18px">
+  <div class="wrap">
+    <div class="proof" role="list" aria-label="Project facts">
+      <div class="cell" role="listitem">
+        <span class="k">240</span>
+        <span class="v">in-kernel tests passing</span>
+      </div>
+      <div class="cell" role="listitem">
+        <span class="k sm">CI every push</span>
+        <span class="v">suite, host fuzz gates &amp; a stress job</span>
+      </div>
+      <div class="cell" role="listitem">
+        <span class="k sm">Self-hosting</span>
+        <span class="v">runs tcc + GNU make on itself</span>
+      </div>
+      <div class="cell" role="listitem">
+        <span class="k sm">RFC 793 TCP</span>
+        <span class="v">full stack over Intel e1000</span>
+      </div>
+      <div class="cell" role="listitem">
+        <span class="k sm">busybox + musl</span>
+        <span class="v">unmodified ring-3 binaries</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== TERMINAL ===================== -->
+<section class="section-tight">
+  <div class="wrap" style="max-width:820px">
+    <div class="terminal" role="img" aria-label="A MakhOS shell session: help, a word count through a pipe, and a ping of the gateway.">
+      <div class="bar">
+        <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+        <span class="title">makhos — ring-3 /bin/sh</span>
+      </div>
+<pre><span class="p">$</span> <span class="c">help</span>
+<span class="o">MAKH OS - a small x86-64 operating system, built brick by brick.
+Running a user-space shell (ring 3) on MAKH's own kernel.
+...</span>
+<span class="p">$</span> <span class="c">echo "brick by brick" | wc -w</span>
+<span class="o">3</span>
+<span class="p">$</span> <span class="c">ping 10.0.2.2 3</span>
+<span class="o">PING 10.0.2.2: 3 echo requests, 56 data bytes
+64 bytes from 10.0.2.2: icmp_seq=1 ttl=255 time=0 ms
+64 bytes from 10.0.2.2: icmp_seq=2 ttl=255 time=0 ms
+64 bytes from 10.0.2.2: icmp_seq=3 ttl=255 time=0 ms
+--- 10.0.2.2 ping statistics ---</span>
+<span class="ok">3 packets transmitted, 3 received, 0% packet loss</span>
+<span class="o">rtt min/avg/max = 0/0/0 ms</span></pre>
+    </div>
+    <p class="center" style="color:var(--faint);font-family:var(--mono);font-size:0.8rem;margin-top:14px">
+      A fennec splash on boot, then a real ring-3 shell on MAKH's own kernel.
+    </p>
+  </div>
+</section>
+
+<!-- ===================== SIGNATURE: TWO FUZZERS ===================== -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow">The signature</p>
+    <h2 class="section-title">Two fuzzers, both sides of the privilege boundary</h2>
+    <p class="lead">Most from-scratch kernels are never tested adversarially. MakhOS attacks its own kernel continuously — from inside ring&nbsp;0, and from ring&nbsp;3 the way a hostile program would — so a fault becomes a reproducible finding instead of a dead machine.</p>
+
+    <div class="sig">
+      <div class="pane">
+        <span class="ring">Ring 0 · inside the kernel</span>
+        <h3>🔬 KFUZZ</h3>
+        <p>A coverage-guided fuzzer that runs <em>inside</em> the kernel and calls its own allocators, string routines, pthreads, shell and network path directly. An assembly <code class="inline-code">setjmp</code>/<code class="inline-code">longjmp</code> sandbox turns <code class="inline-code">#PF</code>/<code class="inline-code">#GP</code> faults into reports with the exact reproducing seed — no triple-fault.</p>
+        <a class="arrow" href="technology.html#kfuzz">How KFUZZ works →</a>
+      </div>
+      <div class="pane">
+        <span class="ring">Ring 3 · through the syscall ABI</span>
+        <h3>🔍 UFUZZ</h3>
+        <p>Typed syscall programs thrown at the kernel over an 80-call ABI contract. UFUZZ knows the result each call <em>must</em> return, with a second independent model that re-derives every expectation — turning each disagreement into a classified, replayable, minimized finding.</p>
+        <a class="arrow" href="technology.html#ufuzz">How UFUZZ works →</a>
+      </div>
+    </div>
+
+    <p style="color:var(--muted);margin-top:18px">Both share the kernel's <code class="inline-code">trace-pc</code> coverage map, the fail-first discipline — no oracle counts until it has been shown to fail — and the rule that a finding is only claimed once it reproduces.</p>
+  </div>
+</section>
+
+<!-- ===================== WHAT MAKES IT DIFFERENT ===================== -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <p class="eyebrow">Beyond "Hello, World"</p>
+    <h2 class="section-title">A real operating system, not a demo</h2>
+    <p class="lead">A handful of capabilities here are genuinely rare for a from-scratch OS. Each links into a full technical write-up.</p>
+
+    <div class="grid grid-3" style="margin-top:28px">
+      <a class="card" href="technology.html#selfhost">
+        <span class="ico">🧩</span>
+        <h3>It self-hosts</h3>
+        <p>MakhOS runs <code>tcc</code> and GNU <code>make</code> <em>on itself</em>, rebuilds a program it ships from its own source, and runs the result — the self-hosting summit for a kernel this size.</p>
+        <span class="more">Self-hosting →</span>
+      </a>
+      <a class="card" href="technology.html#architecture">
+        <span class="ico">🧵</span>
+        <h3>It runs real binaries</h3>
+        <p><code>busybox</code> and <code>musl</code>-libc static-PIE executables run as ordinary ring-3 processes, with <code>fork</code>/<code>execve</code>/<code>wait4</code>, pipes, job control and signals.</p>
+        <span class="more">Architecture →</span>
+      </a>
+      <a class="card" href="technology.html#network">
+        <span class="ico">🌐</span>
+        <h3>It has a real network stack</h3>
+        <p>PCI + Intel e1000 over DMA, ARP, IPv4, ICMP, UDP and a full RFC 793 TCP behind a POSIX socket API — ~200&nbsp;KB over loopback TCP in ~20&nbsp;ms, byte-exact under 1-in-7 packet loss.</p>
+        <span class="more">Networking →</span>
+      </a>
+      <a class="card" href="technology.html#architecture">
+        <span class="ico">🛡️</span>
+        <h3>It checks its own memory</h3>
+        <p>A kernel heap with a full integrity walker, stack canaries verified on every context switch, a process-tree invariant checker, and hardware watchpoints for hunting stray writes.</p>
+        <span class="more">Architecture →</span>
+      </a>
+      <a class="card" href="technology.html#architecture">
+        <span class="ico">🗄️</span>
+        <h3>It has real storage</h3>
+        <p>A VFS with tmpfs, devfs and a tar initrd over a polled virtio-blk disk, plus a read/write <code>ext2</code> filesystem — up to multi-block-group and triple-indirect files.</p>
+        <span class="more">Architecture →</span>
+      </a>
+      <a class="card" href="technology.html#shell">
+        <span class="ico">🖥️</span>
+        <h3>It looks like an OS</h3>
+        <p>A framebuffer graphics console with an antialiased font and a warm palette, a fennec boot splash with a spinning loader, and an interactive line-editing shell with history and shortcuts.</p>
+        <span class="more">The shell →</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== LICENSING CTA BAND ===================== -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="band">
+      <p class="eyebrow" style="text-align:center">Open core · Commercial edition</p>
+      <h2>Build on the open kernel, or license the edition you need</h2>
+      <p>MakhOS is dual-licensed: free under the GNU AGPL-3.0 for everyone who shares their modifications, and available under a commercial license for products, appliances and hosted services that need to keep their changes private.</p>
+      <div class="btn-row" style="justify-content:center">
+        <a class="btn btn-primary btn-lg" href="licensing.html">See licensing options</a>
+        <a class="btn btn-ghost btn-lg" href="about.html">About MAKH-SYS</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ===================== FOOTER (shared) ===================== -->
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col" style="max-width:300px">
+        <div class="brand" style="margin-bottom:10px"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></div>
+        <p style="color:var(--faint);font-size:0.86rem;margin:0">A from-scratch x86-64 operating system kernel by MAKH-SYS. Open core under AGPL-3.0, with a commercial edition.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Project</h4>
+        <a href="technology.html">Technology</a>
+        <a href="blog.html">Blog</a>
+        <a href="docs.html">Documentation</a>
+      </div>
+      <div class="footer-col">
+        <h4>Organization</h4>
+        <a href="about.html">About MAKH-SYS</a>
+        <a href="licensing.html">Licensing</a>
+        <a href="about.html#contact">Contact</a>
+      </div>
+      <div class="footer-col">
+        <h4>Source</h4>
+        <a href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">GitHub ↗</a>
+        <a href="https://github.com/medaminkh-dev/MAKH/releases/tag/v1.4.0" target="_blank" rel="noopener">Release v1.4.0 ↗</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="lic">AGPL-3.0 open core + commercial edition · © 2026 MAKH-SYS</span>
+      <span>Built brick by brick</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

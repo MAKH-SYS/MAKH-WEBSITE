@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About — MAKH-SYS</title>
+<meta name="description" content="MAKH-SYS is the organization behind MakhOS, a from-scratch x86-64 operating system kernel. Open core under AGPL-3.0, with a commercial edition — and how to get in touch.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="technology.html">Technology</a>
+      <a href="blog.html">Blog</a>
+      <a href="docs.html">Docs</a>
+      <a href="about.html" class="active">About</a>
+      <a href="licensing.html" class="cta">Licensing</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="section-tight" style="padding-top:44px">
+  <div class="wrap">
+    <p class="eyebrow">About</p>
+    <h1 style="font-size:clamp(1.8rem,4.6vw,2.6rem);margin:6px 0 10px">MAKH-SYS</h1>
+    <p class="lead">MAKH-SYS is the organization behind <strong>MakhOS</strong> — a from-scratch x86-64 operating system kernel, written in freestanding C and assembly, with no Linux, BSD or existing kernel underneath. We build systems software the slow, verifiable way: one brick at a time, where a feature lands only when its tests are green.</p>
+  </div>
+</section>
+
+<section style="padding-top:12px">
+  <div class="wrap">
+    <div class="grid grid-2" style="align-items:start">
+      <div class="card">
+        <h3>What we build</h3>
+        <p style="margin-bottom:12px">MakhOS boots with GRUB (Multiboot2), draws to a framebuffer graphics console, schedules threads preemptively, runs ring-3 user programs, speaks TCP/IP over a real Intel e1000 NIC, mounts ext2 disks, and even compiles C on itself with <code class="inline-code">tcc</code> + <code class="inline-code">make</code>.</p>
+        <p>Its signature is a pair of fuzzers that attack the kernel from both sides of the privilege boundary — KFUZZ from inside ring 0, UFUZZ from ring 3 through the syscall ABI.</p>
+      </div>
+      <div class="card">
+        <h3>How we build it</h3>
+        <p style="margin-bottom:12px">Everything is built <strong>brick by brick</strong>: each phase has its own design document and a green test suite, with 240 in-kernel tests, a stress runner, and CI on every push.</p>
+        <blockquote style="margin:0;padding:10px 16px;border-left:3px solid var(--accent);background:var(--bg-elev);color:var(--muted);border-radius:0 8px 8px 0">Sometimes you have to go backward to move forward — the project once rolled back to its last solid phase and rebuilt, with tests meaner than any user.</blockquote>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:12px">
+  <div class="wrap">
+    <h2 class="section-title">Open core, commercial edition</h2>
+    <p class="lead" style="margin-bottom:22px">MakhOS is split cleanly into an open kernel and a commercial edition, so you can build on the open source and license more only when you need it.</p>
+    <div class="grid grid-2">
+      <div class="card">
+        <span class="badge green" style="margin-bottom:10px"><span class="dot"></span>Open source</span>
+        <h3>The MakhOS kernel</h3>
+        <p>The full kernel — boot, memory, scheduler, pthreads, networking, filesystem, the shell, self-hosting, and both fuzzers — is open source under the GNU AGPL-3.0 (release v1.4.0). Study it, modify it, and build on it; share your modifications under the same terms.</p>
+        <a class="more" href="technology.html">Explore the technology →</a>
+      </div>
+      <div class="card">
+        <span class="badge" style="margin-bottom:10px"><span class="dot"></span>Commercial</span>
+        <h3>Commercial license &amp; Security Edition</h3>
+        <p>A commercial license covers proprietary and hosted use that needs to keep its changes private, plus support and a warranty. The forthcoming <strong>MakhOS Security Edition (2.0)</strong> — symmetric multiprocessing with a built-in verification layer — ships under commercial license.</p>
+        <a class="more" href="licensing.html">See licensing →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CONTACT ===================== -->
+<section id="contact" style="padding-top:12px">
+  <div class="wrap" style="max-width:740px">
+    <div class="band">
+      <p class="eyebrow" style="text-align:center">Contact</p>
+      <h2>Get in touch</h2>
+      <p>Questions about the project, a commercial license, or collaboration? The quickest route is the maintainer's GitHub profile; for commercial enquiries, use the address below.</p>
+      <div class="btn-row" style="justify-content:center">
+        <a class="btn btn-ghost" href="https://github.com/medaminkh-dev" target="_blank" rel="noopener">@medaminkh-dev on GitHub ↗</a>
+        <!-- Placeholder address: contact@makh-sys.example is an intentional, non-real placeholder (RFC 2606 .example). Replace with a real address before launch. -->
+        <a class="btn btn-primary" href="mailto:contact@makh-sys.example?subject=MakhOS%20enquiry">Email contact@makh-sys.example</a>
+      </div>
+      <p style="color:var(--faint);font-size:0.82rem;margin-top:14px;text-align:center">
+        <strong>Placeholder address</strong> — <code class="inline-code">contact@makh-sys.example</code> is not a live inbox; replace it with a real contact before launch.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap center">
+    <p style="color:var(--faint);font-family:var(--mono);font-size:0.86rem">MakhOS · © 2026 Amine Khemissi · AGPL-3.0-only or commercial</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col" style="max-width:300px">
+        <div class="brand" style="margin-bottom:10px"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></div>
+        <p style="color:var(--faint);font-size:0.86rem;margin:0">A from-scratch x86-64 operating system kernel by MAKH-SYS. Open core under AGPL-3.0, with a commercial edition.</p>
+      </div>
+      <div class="footer-col"><h4>Project</h4><a href="technology.html">Technology</a><a href="blog.html">Blog</a><a href="docs.html">Documentation</a></div>
+      <div class="footer-col"><h4>Organization</h4><a href="about.html">About MAKH-SYS</a><a href="licensing.html">Licensing</a><a href="about.html#contact">Contact</a></div>
+      <div class="footer-col"><h4>Source</h4><a href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">GitHub ↗</a><a href="https://github.com/medaminkh-dev/MAKH/releases/tag/v1.4.0" target="_blank" rel="noopener">Release v1.4.0 ↗</a></div>
+    </div>
+    <div class="footer-bottom">
+      <span class="lic">AGPL-3.0 open core + commercial edition · © 2026 MAKH-SYS</span>
+      <span>Built brick by brick</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog — MakhOS</title>
+<meta name="description" content="Engineering write-ups from the MakhOS project: how a kernel fuzzes itself from ring 0 without triple-faulting, and how UFUZZ attacks the kernel from ring 3 with a checked oracle.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="index.html"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="technology.html">Technology</a>
+      <a href="blog.html" class="active">Blog</a>
+      <a href="docs.html">Docs</a>
+      <a href="about.html">About</a>
+      <a href="licensing.html" class="cta">Licensing</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="section-tight" style="padding-top:44px">
+  <div class="wrap">
+    <p class="eyebrow">Blog</p>
+    <h1 style="font-size:clamp(1.8rem,4.6vw,2.6rem);margin:6px 0 10px">Engineering notes</h1>
+    <p class="lead">Deep dives from the MakhOS project — written from the open-source kernel and its design documents.</p>
+  </div>
+</section>
+
+<section style="padding-top:12px">
+  <div class="wrap">
+    <div class="grid grid-3">
+
+      <a class="card post-card" href="blog-kfuzz.html">
+        <div class="meta">Kernel fuzzing · KFUZZ</div>
+        <h3>How a kernel fuzzes itself without triple-faulting</h3>
+        <p>A bad input in ring 0 normally kills the machine. KFUZZ turns the fault into a reproducible finding with an assembly setjmp/longjmp sandbox, coverage feedback, and invariant oracles.</p>
+        <span class="more">Read the post →</span>
+      </a>
+
+      <a class="card post-card" href="blog-ufuzz.html">
+        <div class="meta">Syscall fuzzing · UFUZZ</div>
+        <h3>Attacking a kernel from ring 3 with an oracle</h3>
+        <p>UFUZZ throws typed syscall programs at the kernel and knows the result each call must return — with a second, independent model that re-derives every expectation so the oracle itself is checked.</p>
+        <span class="more">Read the post →</span>
+      </a>
+
+      <!-- Commercial teaser card: no post body, links to licensing (per brief) -->
+      <a class="card post-card soon" href="licensing.html">
+        <span class="tagline">Commercial edition — coming soon</span>
+        <div class="meta">MakhOS 2.0</div>
+        <h3>MakhOS 2.0 — SMP &amp; MAKH Cells</h3>
+        <p>Symmetric multiprocessing with a built-in verification layer: deterministic concurrency testing, strict per-CPU partitioning into isolated cells, and a self-fuzzing scheduler. Available under commercial license.</p>
+        <span class="more">See licensing →</span>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col" style="max-width:300px">
+        <div class="brand" style="margin-bottom:10px"><span class="glyph">🦊</span><span>MAKH<b>OS</b></span></div>
+        <p style="color:var(--faint);font-size:0.86rem;margin:0">A from-scratch x86-64 operating system kernel by MAKH-SYS. Open core under AGPL-3.0, with a commercial edition.</p>
+      </div>
+      <div class="footer-col"><h4>Project</h4><a href="technology.html">Technology</a><a href="blog.html">Blog</a><a href="docs.html">Documentation</a></div>
+      <div class="footer-col"><h4>Organization</h4><a href="about.html">About MAKH-SYS</a><a href="licensing.html">Licensing</a><a href="about.html#contact">Contact</a></div>
+      <div class="footer-col"><h4>Source</h4><a href="https://github.com/medaminkh-dev/MAKH" target="_blank" rel="noopener">GitHub ↗</a><a href="https://github.com/medaminkh-dev/MAKH/releases/tag/v1.4.0" target="_blank" rel="noopener">Release v1.4.0 ↗</a></div>
+    </div>
+    <div class="footer-bottom">
+      <span class="lic">AGPL-3.0 open core + commercial edition · © 2026 MAKH-SYS</span>
+      <span>Built brick by brick</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
