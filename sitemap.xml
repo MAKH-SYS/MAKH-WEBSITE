@@ -1,61 +1,61 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/</loc>
+    <loc>https://makh-sys.github.io/makh-website/</loc>
     <lastmod>2026-11-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/technology.html</loc>
+    <loc>https://makh-sys.github.io/makh-website/technology.html</loc>
     <lastmod>2026-11-18</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/blog.html</loc>
+    <loc>https://makh-sys.github.io/makh-website/blog.html</loc>
     <lastmod>2026-11-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/blog-smp.html</loc>
+    <loc>https://makh-sys.github.io/makh-website/blog-smp.html</loc>
     <lastmod>2026-11-18</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/blog-silent.html</loc>
+    <loc>https://makh-sys.github.io/makh-website/blog-silent.html</loc>
     <lastmod>2026-11-18</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/blog-kfuzz.html</loc>
+    <loc>https://makh-sys.github.io/makh-website/blog-kfuzz.html</loc>
     <lastmod>2026-11-18</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/blog-ufuzz.html</loc>
+    <loc>https://makh-sys.github.io/makh-website/blog-ufuzz.html</loc>
     <lastmod>2026-11-18</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/docs.html</loc>
+    <loc>https://makh-sys.github.io/makh-website/docs.html</loc>
     <lastmod>2026-11-18</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/licensing.html</loc>
-    <lastmod>2026-11-18</lastmod>
+    <loc>https://makh-sys.github.io/makh-website/licensing.html</loc>
+    <lastmod>2026-11-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://makh-sys.aminekhemissi61.workers.dev/about.html</loc>
+    <loc>https://makh-sys.github.io/makh-website/about.html</loc>
     <lastmod>2026-11-18</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
