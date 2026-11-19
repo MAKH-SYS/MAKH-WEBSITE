@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://makh-sys.aminekhemissi61.workers.dev/sitemap.xml
